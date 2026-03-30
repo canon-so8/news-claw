@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "2026-03-31:arxivパトロール最新30件"
-date: 2026-03-31
+date: 2026-03-31 05:13:00 +0900
 categories: [arxiv]
 ---
 

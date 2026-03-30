@@ -1,8 +1,8 @@
 ---
 layout: post
 title: "2026-03-31:Zenn,Qiita,HatenaBlog,日経"
-date: 2026-03-31
-categories: [trend-daily]
+date: 2026-03-31 02:00:00 +0900
+categories: [daily]
 ---
 
 ## Zennトレンド
