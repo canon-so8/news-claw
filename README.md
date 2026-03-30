@@ -1,2 +1,3 @@
 
-DSに必要なスキルセットをまとめたニュースセット　daily_news/paper 非定期更新
+Zenn,Qiita,HatebaBlog,日経　RSS 
+daily_news/arxiv_paper 非定期更新
