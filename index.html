@@ -24,13 +24,6 @@ layout: null
       padding: 0.5rem 0;
       border-bottom: 1px solid #f0f0f0;
     }
-    .date {
-      color: #aaa;
-      font-size: 0.78rem;
-      white-space: nowrap;
-      width: 5.2rem;
-      flex-shrink: 0;
-    }
     .cat {
       font-size: 0.68rem;
       font-weight: 600;
@@ -55,7 +48,6 @@ layout: null
   <ul>
     {% for post in site.posts %}
     <li>
-      <span class="date">{{ post.date | date: "%Y-%m-%d" }}</span>
       {% for cat in post.categories %}
         {% if cat == "arxiv" %}
           <span class="cat cat-arxiv">arxiv</span>
