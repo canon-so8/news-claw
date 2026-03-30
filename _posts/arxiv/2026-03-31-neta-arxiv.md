@@ -5,21 +5,31 @@ date: 2026-03-31 05:13:00 +0900
 categories: [arxiv]
 ---
 
+<style>
+.tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
+.tag-cv  { color: #1a6bbf; background: #e8f0fb; }
+.tag-ml  { color: #6a1b9a; background: #f3e5f5; }
+.tag-nlp { color: #2a8a4a; background: #e6f4ea; }
+.tag-ai  { color: #bf5a00; background: #fff3e0; }
+.tag-au  { color: #c2185b; background: #fce4ec; }
+.tag-other { color: #666; background: #f2f2f2; }
+</style>
+
 ## 注目論文
 
 | タイトル | タグ |
 |---------|------|
-| [GaussianGPT: Towards Autoregressive 3D Gaussian Scene Generation](https://arxiv.org/abs/2603.26661) | `CV` |
-| [VGGRPO: Towards World-Consistent Video Generation with 4D Latent Reward](https://arxiv.org/abs/2603.26599) | `CV` |
-| [Weight Tying Biases Token Embeddings Towards the Output Space](https://arxiv.org/abs/2603.26663) | `NLP` |
-| [The Limits of Learning from Pictures and Text: VLMs and Embodied Scene Understanding](https://arxiv.org/abs/2603.26589) | `CV` |
-| [Learning to Commit: Generating Organic Pull Requests via Online Repository Memory](https://arxiv.org/abs/2603.26664) | `AI` |
+| [GaussianGPT: Towards Autoregressive 3D Gaussian Scene Generation](https://arxiv.org/abs/2603.26661) | <span class="tag tag-cv">CV</span> |
+| [VGGRPO: Towards World-Consistent Video Generation with 4D Latent Reward](https://arxiv.org/abs/2603.26599) | <span class="tag tag-cv">CV</span> |
+| [Weight Tying Biases Token Embeddings Towards the Output Space](https://arxiv.org/abs/2603.26663) | <span class="tag tag-nlp">NLP</span> |
+| [The Limits of Learning from Pictures and Text: VLMs and Embodied Scene Understanding](https://arxiv.org/abs/2603.26589) | <span class="tag tag-cv">CV</span> |
+| [Learning to Commit: Generating Organic Pull Requests via Online Repository Memory](https://arxiv.org/abs/2603.26664) | <span class="tag tag-ai">AI</span> |
 
 ---
 
 **[GaussianGPT: Towards Autoregressive 3D Gaussian Scene Generation](https://arxiv.org/abs/2603.26661)**
 
-`CV` · Nicolas von Lützow · 2026-03-27
+<span class="tag tag-cv">CV</span> · Nicolas von Lützow · 2026-03-27
 
 > **注目理由**: 3D生成モデリングで主流の拡散モデル／フローマッチングを使わず、GPT式の次トークン予測で3Dシーンを生成する初のアーキテクチャ。Gaussian Splattingと自己回帰モデルを組み合わせた設計は、シーン補完や外部拡張など多様なタスクへの波及が期待される。
 
@@ -34,7 +44,7 @@ categories: [arxiv]
 
 **[VGGRPO: Towards World-Consistent Video Generation with 4D Latent Reward](https://arxiv.org/abs/2603.26599)**
 
-`CV` · Zhaochong An · 2026-03-27
+<span class="tag tag-cv">CV</span> · Zhaochong An · 2026-03-27
 
 > **注目理由**: 事前学習済みビデオ拡散モデルのアーキテクチャを変えずに、強化学習（GRPO）を潜在空間で適用して幾何学的一貫性を改善する手法。モデル改造なしにRL後学習で品質向上できるという設計思想は、他の制約（物理・照明など）にも応用可能。
 
@@ -49,7 +59,7 @@ categories: [arxiv]
 
 **[Weight Tying Biases Token Embeddings Towards the Output Space](https://arxiv.org/abs/2603.26663)**
 
-`NLP` · Antonio Lopardo · 2026-03-27
+<span class="tag tag-nlp">NLP</span> · Antonio Lopardo · 2026-03-27
 
 > **注目理由**: LLMで広く使われる「重み共有（weight tying）」がなぜスケール時に性能劣化を引き起こすかを初めて実証的に解明。入力表現と出力予測を1つの行列で賄う設計の根本的なトレードオフを明らかにした点で、モデル設計の常識を見直させる発見。
 
@@ -64,7 +74,7 @@ categories: [arxiv]
 
 **[The Limits of Learning from Pictures and Text: Vision-Language Models and Embodied Scene Understanding](https://arxiv.org/abs/2603.26589)**
 
-`CV` · Gillian Rosenberg · 2026-03-27
+<span class="tag tag-cv">CV</span> · Gillian Rosenberg · 2026-03-27
 
 > **注目理由**: 18種類のVLMを15種類のシーン理解タスクで評価し「アフォーダンス（物の使い方・操作可能性）理解には構造的な欠陥がある」と実証。プロンプト工学でも解決できず、身体的経験なしに言語と画像だけでは補えない領域があることを示した意義深い批判的研究。
 
@@ -79,7 +89,7 @@ categories: [arxiv]
 
 **[Learning to Commit: Generating Organic Pull Requests via Online Repository Memory](https://arxiv.org/abs/2603.26664)**
 
-`AI` · Mo Li · 2026-03-27
+<span class="tag tag-ai">AI</span> · Mo Li · 2026-03-27
 
 > **注目理由**: コーディングエージェントが「動くコード」を生成できても「そのプロジェクトらしいコード」にならない問題に正面から取り組んだ研究。過去のコミット履歴から逐次的にスキルを蒸留する「オンラインリポジトリメモリ」はAIエージェントの実用化に直結するアイデア。
 
@@ -97,35 +107,35 @@ categories: [arxiv]
 
 | # | タグ | タイトル | 著者 | 概要 |
 |---|------|----------|------|------|
-| 1 | `CV` | [Detailed Geometry and Appearance from Opportunistic Motion](https://arxiv.org/abs/2603.26665) | Ryosuke Hirai | 偶発的なカメラ動きから詳細な3D形状と外観を復元 |
-| 2 | `AI` | [Learning to Commit](https://arxiv.org/abs/2603.26664) | Mo Li | コミット履歴からスキルを蒸留しプロジェクト固有PRを生成 |
-| 3 | `NLP` | [Weight Tying Biases Token Embeddings](https://arxiv.org/abs/2603.26663) | Antonio Lopardo | 重み共有がLLMの入力表現を歪める機構を実証 |
-| 4 | `CV` | [GaussianGPT](https://arxiv.org/abs/2603.26661) | Nicolas von Lützow | 次トークン予測で3DガウシアンシーンをGPT式に生成 |
-| 5 | `—` | [Ruka-v2: Tendon Driven Dexterous Hand](https://arxiv.org/abs/2603.26660) | Xinqi Lucas | ロボット学習用オープンソース腱駆動多指ハンドv2 |
-| 6 | `CV` | [Zero-Shot Depth from Defocus](https://arxiv.org/abs/2603.26658) | Yiming Zuo | ボケ量から深度を推定するゼロショット手法 |
-| 7 | `CV` | [Tunable Soft Equivariance with Guarantees](https://arxiv.org/abs/2603.26657) | Md Ashiqur Rahman | 保証付きの調整可能なソフト同変性ニューラルネット |
-| 8 | `CV` | [PerceptionComp](https://arxiv.org/abs/2603.26653) | Shaoxuan Li | 複雑な知覚推論を問うビデオ理解ベンチマーク |
-| 9 | `AI` | [Vision2Web](https://arxiv.org/abs/2603.26648) | Zehai He | エージェントによる視覚的Webサイト開発ベンチマーク |
-| 10 | `ML` | [LP-based Sampling for Multi-Armed Bandits](https://arxiv.org/abs/2603.26647) | Ashutosh Soni | 側観測付き多腕バンディットのLP的サンプリング方策 |
-| 11 | `CV` | [Beyond Language: Hand Pointing in Egocentric Vision](https://arxiv.org/abs/2603.26646) | Ling Li | 一人称映像で指差し動作と言語を組み合わせた物体参照 |
-| 12 | `ML` | [Automatic Laplace Collapsed Sampling](https://arxiv.org/abs/2603.26644) | Toby Lovick | 自動微分で潜在パラメータを周辺化するLaplaceサンプリング |
-| 13 | `CV` | [Make Geometry Matter for Spatial Reasoning](https://arxiv.org/abs/2603.26639) | Shihua Zhang | 空間推論において幾何情報を効果的に活用するフレームワーク |
-| 14 | `CV` | [Drive-Through 3D Vehicle Reconstruction](https://arxiv.org/abs/2603.26638) | Nitin Kulkarni | 走行中に車両外装を3D再構成する歪み考慮型Gaussian Splatting |
-| 15 | `ML` | [ML Transferability for Malware Detection](https://arxiv.org/abs/2603.26632) | César Vieira | マルウェア検知MLモデルの転移可能性を評価 |
-| 16 | `ML` | [Context-specific Credibility-aware Multimodal Fusion](https://arxiv.org/abs/2603.26629) | Pranuthi Tenali | 信頼性考慮の条件付き確率回路によるマルチモーダル融合 |
-| 17 | `ML` | [Benchmarking Tabular Foundation Models](https://arxiv.org/abs/2603.26611) | Rafael Izbicki | 条件密度推定向け表形式基盤モデルのベンチマーク |
-| 18 | `CV` | [Think over Trajectories](https://arxiv.org/abs/2603.26610) | Ruixing Zhang | ビデオ生成モデルで携帯信号からGPS軌跡を再構成 |
-| 19 | `ML` | [Hardware-Aware Tensor Networks for Anomaly Detection](https://arxiv.org/abs/2603.26604) | Sagar Addepalli | 粒子衝突器向け量子インスパイアドTensor Networkによる異常検知 |
-| 20 | `ML` | [Sustainability Is Not Linear](https://arxiv.org/abs/2603.26603) | Eziyo Ehsani | オンデバイスAIの性能・消費電力・プライバシーのトレードオフ定量化 |
-| 21 | `CV` | [VGGRPO](https://arxiv.org/abs/2603.26599) | Zhaochong An | 潜在空間GRPO強化学習で幾何学的一貫性のあるビデオ生成 |
-| 22 | `CV` | [Static to Dynamic: Image-to-Video Transfer Learning](https://arxiv.org/abs/2603.26597) | Yang Liu | 静止画から動画への自己教師あり表現転移学習の探索 |
-| 23 | `ML` | [Forecasting Solar Power Ramp Events](https://arxiv.org/abs/2603.26596) | Luca Lanzilao | 国家規模の太陽光発電急変イベントの特性分析と予測 |
-| 24 | `ML` | [PQuantML](https://arxiv.org/abs/2603.26595) | Roope Niemi | ハードウェア特性考慮のエンドツーエンドモデル圧縮ツール |
-| 25 | `ML` | [Interactive Visualization for Time-Series Annotation](https://arxiv.org/abs/2603.26592) | Einari Vaaras | 生体時系列アノテーション向けインタラクティブ可視化サンプル選択 |
-| 26 | `CV` | [The Limits of VLMs](https://arxiv.org/abs/2603.26589) | Gillian Rosenberg | VLMのアフォーダンス理解に構造的欠陥があることを15タスクで実証 |
-| 27 | `CV` | [Diffusion Model for Dental Crown Completion](https://arxiv.org/abs/2603.26588) | Dávid Pukanec | 合成データで学習した拡散モデルで患者固有の歯冠補完 |
-| 28 | `NLP` | [EnTaCs: English-Tamil Code-Switching](https://arxiv.org/abs/2603.26587) | Paul Bontempo | 英語・タミル語コードスイッチングにおける感情と言語選択の分析 |
-| 29 | `CV` | [MA-Bench: Micro-Action Understanding](https://arxiv.org/abs/2603.26586) | Kun Li | 細粒度なマイクロアクション理解ベンチマーク |
-| 30 | `CV` | [Scene Grounding In the Wild](https://arxiv.org/abs/2603.26584) | Tamir Cohen | 野外環境でのシーングラウンディング |
+| 1 | <span class="tag tag-cv">CV</span> | [Detailed Geometry and Appearance from Opportunistic Motion](https://arxiv.org/abs/2603.26665) | Ryosuke Hirai | 偶発的なカメラ動きから詳細な3D形状と外観を復元 |
+| 2 | <span class="tag tag-ai">AI</span> | [Learning to Commit](https://arxiv.org/abs/2603.26664) | Mo Li | コミット履歴からスキルを蒸留しプロジェクト固有PRを生成 |
+| 3 | <span class="tag tag-nlp">NLP</span> | [Weight Tying Biases Token Embeddings](https://arxiv.org/abs/2603.26663) | Antonio Lopardo | 重み共有がLLMの入力表現を歪める機構を実証 |
+| 4 | <span class="tag tag-cv">CV</span> | [GaussianGPT](https://arxiv.org/abs/2603.26661) | Nicolas von Lützow | 次トークン予測で3DガウシアンシーンをGPT式に生成 |
+| 5 | <span class="tag tag-other">—</span> | [Ruka-v2: Tendon Driven Dexterous Hand](https://arxiv.org/abs/2603.26660) | Xinqi Lucas | ロボット学習用オープンソース腱駆動多指ハンドv2 |
+| 6 | <span class="tag tag-cv">CV</span> | [Zero-Shot Depth from Defocus](https://arxiv.org/abs/2603.26658) | Yiming Zuo | ボケ量から深度を推定するゼロショット手法 |
+| 7 | <span class="tag tag-cv">CV</span> | [Tunable Soft Equivariance with Guarantees](https://arxiv.org/abs/2603.26657) | Md Ashiqur Rahman | 保証付きの調整可能なソフト同変性ニューラルネット |
+| 8 | <span class="tag tag-cv">CV</span> | [PerceptionComp](https://arxiv.org/abs/2603.26653) | Shaoxuan Li | 複雑な知覚推論を問うビデオ理解ベンチマーク |
+| 9 | <span class="tag tag-ai">AI</span> | [Vision2Web](https://arxiv.org/abs/2603.26648) | Zehai He | エージェントによる視覚的Webサイト開発ベンチマーク |
+| 10 | <span class="tag tag-ml">ML</span> | [LP-based Sampling for Multi-Armed Bandits](https://arxiv.org/abs/2603.26647) | Ashutosh Soni | 側観測付き多腕バンディットのLP的サンプリング方策 |
+| 11 | <span class="tag tag-cv">CV</span> | [Beyond Language: Hand Pointing in Egocentric Vision](https://arxiv.org/abs/2603.26646) | Ling Li | 一人称映像で指差し動作と言語を組み合わせた物体参照 |
+| 12 | <span class="tag tag-ml">ML</span> | [Automatic Laplace Collapsed Sampling](https://arxiv.org/abs/2603.26644) | Toby Lovick | 自動微分で潜在パラメータを周辺化するLaplaceサンプリング |
+| 13 | <span class="tag tag-cv">CV</span> | [Make Geometry Matter for Spatial Reasoning](https://arxiv.org/abs/2603.26639) | Shihua Zhang | 空間推論において幾何情報を効果的に活用するフレームワーク |
+| 14 | <span class="tag tag-cv">CV</span> | [Drive-Through 3D Vehicle Reconstruction](https://arxiv.org/abs/2603.26638) | Nitin Kulkarni | 走行中に車両外装を3D再構成する歪み考慮型Gaussian Splatting |
+| 15 | <span class="tag tag-ml">ML</span> | [ML Transferability for Malware Detection](https://arxiv.org/abs/2603.26632) | César Vieira | マルウェア検知MLモデルの転移可能性を評価 |
+| 16 | <span class="tag tag-ml">ML</span> | [Context-specific Credibility-aware Multimodal Fusion](https://arxiv.org/abs/2603.26629) | Pranuthi Tenali | 信頼性考慮の条件付き確率回路によるマルチモーダル融合 |
+| 17 | <span class="tag tag-ml">ML</span> | [Benchmarking Tabular Foundation Models](https://arxiv.org/abs/2603.26611) | Rafael Izbicki | 条件密度推定向け表形式基盤モデルのベンチマーク |
+| 18 | <span class="tag tag-cv">CV</span> | [Think over Trajectories](https://arxiv.org/abs/2603.26610) | Ruixing Zhang | ビデオ生成モデルで携帯信号からGPS軌跡を再構成 |
+| 19 | <span class="tag tag-ml">ML</span> | [Hardware-Aware Tensor Networks for Anomaly Detection](https://arxiv.org/abs/2603.26604) | Sagar Addepalli | 粒子衝突器向け量子インスパイアドTensor Networkによる異常検知 |
+| 20 | <span class="tag tag-ml">ML</span> | [Sustainability Is Not Linear](https://arxiv.org/abs/2603.26603) | Eziyo Ehsani | オンデバイスAIの性能・消費電力・プライバシーのトレードオフ定量化 |
+| 21 | <span class="tag tag-cv">CV</span> | [VGGRPO](https://arxiv.org/abs/2603.26599) | Zhaochong An | 潜在空間GRPO強化学習で幾何学的一貫性のあるビデオ生成 |
+| 22 | <span class="tag tag-cv">CV</span> | [Static to Dynamic: Image-to-Video Transfer Learning](https://arxiv.org/abs/2603.26597) | Yang Liu | 静止画から動画への自己教師あり表現転移学習の探索 |
+| 23 | <span class="tag tag-ml">ML</span> | [Forecasting Solar Power Ramp Events](https://arxiv.org/abs/2603.26596) | Luca Lanzilao | 国家規模の太陽光発電急変イベントの特性分析と予測 |
+| 24 | <span class="tag tag-ml">ML</span> | [PQuantML](https://arxiv.org/abs/2603.26595) | Roope Niemi | ハードウェア特性考慮のエンドツーエンドモデル圧縮ツール |
+| 25 | <span class="tag tag-ml">ML</span> | [Interactive Visualization for Time-Series Annotation](https://arxiv.org/abs/2603.26592) | Einari Vaaras | 生体時系列アノテーション向けインタラクティブ可視化サンプル選択 |
+| 26 | <span class="tag tag-cv">CV</span> | [The Limits of VLMs](https://arxiv.org/abs/2603.26589) | Gillian Rosenberg | VLMのアフォーダンス理解に構造的欠陥があることを15タスクで実証 |
+| 27 | <span class="tag tag-cv">CV</span> | [Diffusion Model for Dental Crown Completion](https://arxiv.org/abs/2603.26588) | Dávid Pukanec | 合成データで学習した拡散モデルで患者固有の歯冠補完 |
+| 28 | <span class="tag tag-nlp">NLP</span> | [EnTaCs: English-Tamil Code-Switching](https://arxiv.org/abs/2603.26587) | Paul Bontempo | 英語・タミル語コードスイッチングにおける感情と言語選択の分析 |
+| 29 | <span class="tag tag-cv">CV</span> | [MA-Bench: Micro-Action Understanding](https://arxiv.org/abs/2603.26586) | Kun Li | 細粒度なマイクロアクション理解ベンチマーク |
+| 30 | <span class="tag tag-cv">CV</span> | [Scene Grounding In the Wild](https://arxiv.org/abs/2603.26584) | Tamir Cohen | 野外環境でのシーングラウンディング |
 
 </details>
