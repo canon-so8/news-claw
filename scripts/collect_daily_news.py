@@ -242,34 +242,70 @@ def translate_ja(text: str) -> str:
         return ""
 
 
-def summarize_hn_gemini(articles: list[dict]) -> dict[str, dict]:
+def _fetch_article_text(url: str) -> str:
+    """記事URLから本文テキストを取得（HTMLタグ除去、先頭1500文字）"""
+    try:
+        r = SESSION.get(url, timeout=15, headers={"Accept": "text/html"})
+        if not r or r.status_code != 200:
+            return ""
+        html = r.text
+        # 簡易HTML→テキスト変換（<script>/<style>除去後にタグ除去）
+        import re as _re
+        html = _re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=_re.DOTALL | _re.IGNORECASE)
+        text = _re.sub(r'<[^>]+>', ' ', html)
+        text = _re.sub(r'\s+', ' ', text).strip()
+        return text[:1500]
+    except Exception:
+        return ""
+
+
+def fetch_hn_article_texts(articles: list[dict]) -> dict[str, str]:
+    """HN記事の本文を並列フェッチ。戻り値: {url: text}"""
+    result: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(_fetch_article_text, a["url"]): a["url"] for a in articles}
+        for fut in as_completed(futures):
+            url = futures[fut]
+            result[url] = fut.result()
+    fetched = sum(1 for v in result.values() if v)
+    print(f"    HN記事本文フェッチ: {fetched}/{len(articles)} 件成功")
+    return result
+
+
+def summarize_hn_gemini(articles: list[dict], article_texts: dict[str, str]) -> dict[str, dict]:
     """Gemini APIでHN記事バッチの日本語要約を生成。
+    記事本文を含めて送信することで、内容に基づいた要約を生成する。
     戻り値: {url: {"title_ja": "...", "summary": "..."}}
     """
     if not GEMINI_API_KEY or not articles:
         return {}
 
-    article_texts = []
+    items = []
     for i, a in enumerate(articles):
-        article_texts.append(
+        body = article_texts.get(a["url"], "")
+        body_section = f"\nBody (excerpt): {body[:800]}" if body else ""
+        items.append(
             f"[{i+1}] URL: {a['url']}\n"
             f"Title: {a['title']}\n"
             f"Points: {a['meta'].get('points', 0)}, Comments: {a['meta'].get('comments', 0)}"
+            f"{body_section}"
         )
 
     prompt = f"""以下の{len(articles)}件のHacker News記事について、日本語で要約を生成してください。
+記事の本文（Body excerpt）が提供されている場合は、その内容に基づいて要約してください。
 
 各記事に対して：
 - "title_ja": タイトルの日本語訳（1行）
-- "summary": 日本語要約（3〜4文。「何についての記事か → なぜHNで話題か → コメント欄でどんな議論がされているか（推測含む）」の流れ）
+- "summary": 日本語要約（3〜4文。「何についての記事か → なぜ注目されているか → 技術的・社会的にどんな意味があるか」の流れ。記事本文の内容を反映すること）
 
 レスポンスはJSON形式のみで返してください：
 {{"articles": [{{"url": "...", "title_ja": "...", "summary": "..."}}]}}
 
 記事リスト：
-{chr(10).join(article_texts)}"""
+{chr(10).join(items)}"""
 
     try:
+        print(f"    Gemini API呼び出し中 (HN {len(articles)}件)...")
         resp = SESSION.post(
             f"{GEMINI_URL}?key={GEMINI_API_KEY}",
             json={
@@ -279,15 +315,19 @@ def summarize_hn_gemini(articles: list[dict]) -> dict[str, dict]:
                     "responseMimeType": "application/json",
                 },
             },
-            timeout=90,
+            timeout=120,
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            print(f"    Gemini API HTTP {resp.status_code}: {resp.text[:500]}", file=sys.stderr)
+            return {}
         data = resp.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         result = json.loads(text)
-        return {a["url"]: a for a in result.get("articles", [])}
+        parsed = {a["url"]: a for a in result.get("articles", [])}
+        print(f"    Gemini: {len(parsed)}件のパース成功")
+        return parsed
     except Exception as e:
-        print(f"  Gemini API error (HN): {e}", file=sys.stderr)
+        print(f"  Gemini API error (HN): {type(e).__name__}: {e}", file=sys.stderr)
         return {}
 
 
@@ -323,13 +363,15 @@ def add_point_memos_gemini(source: str, articles: list[dict]) -> dict[str, str]:
             },
             timeout=90,
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            print(f"    Gemini API HTTP {resp.status_code} ({source}): {resp.text[:300]}", file=sys.stderr)
+            return {}
         data = resp.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         result = json.loads(text)
         return {m["url"]: m["memo"] for m in result.get("memos", [])}
     except Exception as e:
-        print(f"  Gemini API error ({source}): {e}", file=sys.stderr)
+        print(f"  Gemini API error ({source}): {type(e).__name__}: {e}", file=sys.stderr)
         return {}
 
 
@@ -496,8 +538,9 @@ def collect_hn() -> list[dict]:
 
     # Gemini APIで要約、フォールバックはGoogle Translate
     if GEMINI_API_KEY:
-        print(f"  HN: Gemini APIで要約生成中... ({len(articles)}件)")
-        gem_results = summarize_hn_gemini(articles)
+        print(f"  HN: 記事本文フェッチ + Gemini要約生成中... ({len(articles)}件)")
+        article_texts = fetch_hn_article_texts(articles)
+        gem_results = summarize_hn_gemini(articles, article_texts)
         for a in articles:
             gem = gem_results.get(a["url"], {})
             a["meta"]["title_ja"] = gem.get("title_ja", "")
@@ -650,6 +693,7 @@ def main():
     timestamp  = now.strftime("%Y-%m-%d-%H-%M")
 
     print("収集開始...")
+    print(f"  GEMINI_API_KEY: {'設定済み (' + GEMINI_API_KEY[:8] + '...)' if GEMINI_API_KEY else '未設定'}")
 
     with ThreadPoolExecutor(max_workers=5) as ex:
         f_zenn   = ex.submit(collect_zenn)

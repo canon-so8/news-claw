@@ -144,6 +144,7 @@ def summarize_papers_gemini(papers: list[dict]) -> dict[str, dict]:
 
     session = _make_session()
     try:
+        print(f"    Gemini API呼び出し中 ({len(papers)}件)...")
         resp = session.post(
             f"{GEMINI_URL}?key={GEMINI_API_KEY}",
             json={
@@ -155,13 +156,17 @@ def summarize_papers_gemini(papers: list[dict]) -> dict[str, dict]:
             },
             timeout=120,
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            print(f"    Gemini API HTTP {resp.status_code}: {resp.text[:500]}", file=sys.stderr)
+            return {}
         data = resp.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         result = json.loads(text)
-        return {p["id"]: p for p in result.get("papers", [])}
+        parsed = {p["id"]: p for p in result.get("papers", [])}
+        print(f"    Gemini: {len(parsed)}件のパース成功")
+        return parsed
     except Exception as e:
-        print(f"  Gemini API error: {e}", file=sys.stderr)
+        print(f"  Gemini API error: {type(e).__name__}: {e}", file=sys.stderr)
         return {}
 
 
@@ -260,6 +265,7 @@ def main():
 
     # Gemini APIで構造化要約を生成（10件ずつバッチ）
     gemini_results: dict[str, dict] = {}
+    print(f"  GEMINI_API_KEY: {'設定済み (' + GEMINI_API_KEY[:8] + '...)' if GEMINI_API_KEY else '未設定'}")
     if GEMINI_API_KEY:
         print(f"  Gemini APIで要約生成中... ({len(filtered)}件)")
         batch_size = 10
