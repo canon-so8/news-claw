@@ -102,7 +102,7 @@ def translate_deepl(text: str) -> str:
     global deepl_chars_used
     if not DEEPL_AUTH_KEY or not text:
         return ""
-    truncated = text[:1500]
+    truncated = text[:500]
     try:
         resp = requests.post(
             DEEPL_API_URL,
@@ -261,29 +261,32 @@ def main():
             f' <span class="tag tag-hf">★ {p["github_stars"]} stars</span>'
             if p["github_stars"] > 0 else ""
         )
-        github_link = f' · <a href="{p["github_repo"]}">GitHub</a>' if p["github_repo"] else ""
+        github_link = f' · [{p["first_author"]}]' if p["first_author"] else ""
+        github_repo = f' · [GitHub]({p["github_repo"]})' if p["github_repo"] else ""
         arxiv_url = f'https://arxiv.org/abs/{p["id"]}'
         hf_date = p.get("hf_date", "")
-
         summary_ja = p.get("summary_ja", "")
 
-        details_block = ""
-        if summary_ja:
-            details_block = (
-                '<details>'
-                '<summary>要約を読む</summary>'
-                f'<p>{summary_ja}</p>'
-                '</details>'
-            )
-
-        lines += [
-            f'<div class="paper" data-tags="{data_tags}">',
-            f'<p><strong><a href="{arxiv_url}">{p["title"]}</a></strong></p>',
-            f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date[5:]} · {p["first_author"]}{github_link}</p>',
-            details_block,
-            "</div>",
+        detail_lines = [
+            f'<div class="paper" data-tags="{data_tags}" markdown="1">',
+            "",
+            f'**[{p["title"]}]({arxiv_url})**',
+            "",
+            f'{tag_spans} {upvote_span}{star_span} · {hf_date[5:]}{github_link}{github_repo}',
             "",
         ]
+        if summary_ja:
+            detail_lines += [
+                '<details markdown="1">',
+                '<summary>要約を読む</summary>',
+                "",
+                f'> {summary_ja}',
+                "",
+                '</details>',
+                "",
+            ]
+        detail_lines += ["</div>", ""]
+        lines += detail_lines
 
     lines += [FILTER_JS, ""]
 

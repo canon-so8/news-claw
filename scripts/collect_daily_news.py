@@ -231,7 +231,7 @@ def translate_deepl(text: str) -> str:
     global deepl_chars_used
     if not DEEPL_AUTH_KEY or not text:
         return ""
-    truncated = text[:1500]
+    truncated = text[:500]
     try:
         resp = SESSION.post(
             DEEPL_API_URL,
