@@ -4,16 +4,15 @@
 Claude Code 不要 - RSS/API から直接データ取得してJekyll Markdownを生成
 
 ソース:
-  - Zenn  : RSS (topicごと)
-  - Qiita : RSS (tagごと)
-  - はてな : RSS (hotentry)
-  - HN    : Algolia API
-  - Nikkei: RSS
+  - Zenn   : API (liked_count付き)
+  - Qiita  : API v2 (likes_count付き)
+  - はてな  : RSS/RDF (bookmarkcount付き)
+  - HN     : Algolia API + Google Translate（タイトル日本語訳）
+  - xTech  : RSS 1.0/RDF
 """
 import json
-import os
 import sys
-import urllib.request
+import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,58 +20,54 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 JST = timezone(timedelta(hours=9))
 REPO_ROOT = Path(__file__).parent.parent
 OUTPUT_DIR = REPO_ROOT / "_posts" / "daily_news"
 
-# Atom/RSS 名前空間
-NS = {
-    "atom": "http://www.w3.org/2005/Atom",
-    "media": "http://search.yahoo.com/mrss/",
-    "dc": "http://purl.org/dc/elements/1.1/",
-    "content": "http://purl.org/rss/1.0/modules/content/",
-}
+# RSS 名前空間
+RSS1   = "http://purl.org/rss/1.0/"
+DC     = "http://purl.org/dc/elements/1.1/"
+ATOM   = "http://www.w3.org/2005/Atom"
+RDF    = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+HATENA = "http://www.hatena.ne.jp/info/xmlns#"
 
 # --- タグ判定 ---
-AI_KEYWORDS = ["ai", "llm", "agent", "gpt", "claude", "gemini", "openai", "anthropic",
-               "chatgpt", "機械学習", "深層学習", "人工知能", "生成ai", "大規模言語"]
-ML_KEYWORDS = ["machine learning", "deep learning", "reinforcement", "pytorch", "tensorflow",
-               "kaggle", "neural", "モデル学習", "ファインチューニング", "統計", "回帰", "分類"]
-CV_KEYWORDS = ["image", "video", "vision", "diffusion", "画像", "動画", "映像", "3d", "点群"]
+AI_KEYWORDS   = ["ai", "llm", "agent", "gpt", "claude", "gemini", "openai", "anthropic",
+                 "chatgpt", "機械学習", "深層学習", "人工知能", "生成ai", "大規模言語"]
+ML_KEYWORDS   = ["machine learning", "deep learning", "reinforcement", "pytorch", "tensorflow",
+                 "kaggle", "neural", "モデル学習", "ファインチューニング", "統計", "回帰", "分類"]
+CV_KEYWORDS   = ["image", "video", "vision", "diffusion", "画像", "動画", "映像", "3d", "点群"]
 POEM_KEYWORDS = ["キャリア", "エンジニア哲学", "転職", "仕事術", "思想", "ポエム", "考え方",
                  "生き方", "働き方", "マインド", "culture", "philosophy"]
-ECO_KEYWORDS = ["経済", "半導体", "nvidia", "tsmc", "テック企業", "産業", "規制", "政策",
-                "株価", "business", "startup", "vc", "融資", "ipo"]
-DEV_KEYWORDS = ["python", "javascript", "typescript", "rust", "go ", "java", "kubernetes",
-                "docker", "linux", "cli", "api", "sdk", "vscode", "開発ツール", "プログラミング"]
+ECO_KEYWORDS  = ["経済", "半導体", "nvidia", "tsmc", "テック企業", "産業", "規制", "政策",
+                 "株価", "business", "startup", "vc", "融資", "ipo"]
+DEV_KEYWORDS  = ["python", "javascript", "typescript", "rust", "go ", "java", "kubernetes",
+                 "docker", "linux", "cli", "api", "sdk", "vscode", "開発ツール", "プログラミング"]
+
+TAG_LABELS = {
+    "ai":    ("AI",    "tag-ai"),
+    "ml":    ("ML",    "tag-ml"),
+    "cv":    ("CV",    "tag-cv"),
+    "poem":  ("ポエム", "tag-poem"),
+    "eco":   ("経済",  "tag-eco"),
+    "dev":   ("Dev",   "tag-dev"),
+    "other": ("Other", "tag-other"),
+}
 
 
 def classify_tag(title: str, desc: str = "") -> str:
     text = (title + " " + desc).lower()
-    if any(k in text for k in AI_KEYWORDS):
-        return "ai"
-    if any(k in text for k in ML_KEYWORDS):
-        return "ml"
-    if any(k in text for k in CV_KEYWORDS):
-        return "cv"
-    if any(k in text for k in POEM_KEYWORDS):
-        return "poem"
-    if any(k in text for k in ECO_KEYWORDS):
-        return "eco"
-    if any(k in text for k in DEV_KEYWORDS):
-        return "dev"
+    if any(k in text for k in AI_KEYWORDS):   return "ai"
+    if any(k in text for k in ML_KEYWORDS):   return "ml"
+    if any(k in text for k in CV_KEYWORDS):   return "cv"
+    if any(k in text for k in POEM_KEYWORDS): return "poem"
+    if any(k in text for k in ECO_KEYWORDS):  return "eco"
+    if any(k in text for k in DEV_KEYWORDS):  return "dev"
     return "other"
-
-
-TAG_LABELS = {
-    "ai": ("AI", "tag-ai"),
-    "ml": ("ML", "tag-ml"),
-    "cv": ("CV", "tag-cv"),
-    "poem": ("ポエム", "tag-poem"),
-    "eco": ("経済", "tag-eco"),
-    "dev": ("Dev", "tag-dev"),
-    "other": ("Other", "tag-other"),
-}
 
 
 def tag_span(tag_key: str) -> str:
@@ -80,34 +75,35 @@ def tag_span(tag_key: str) -> str:
     return f'<span class="tag {cls}">{label}</span>'
 
 
-# --- HTTP ユーティリティ ---
-def fetch_url(url: str, timeout: int = 20) -> Optional[bytes]:
+# --- HTTP セッション ---
+def _session() -> requests.Session:
+    s = requests.Session()
+    retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    s.mount("https://", HTTPAdapter(max_retries=retry))
+    s.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"})
+    return s
+
+SESSION = _session()
+
+
+def get(url: str, timeout: int = 20, **kwargs) -> Optional[requests.Response]:
     try:
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; TrendBot/1.0)"}
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read()
+        r = SESSION.get(url, timeout=timeout, **kwargs)
+        r.raise_for_status()
+        return r
     except Exception as e:
-        print(f"  fetch error [{url[:60]}]: {e}", file=sys.stderr)
+        print(f"  fetch error [{url[:70]}]: {e}", file=sys.stderr)
         return None
 
 
-# RSS 名前空間
-RSS1 = "http://purl.org/rss/1.0/"
-DC = "http://purl.org/dc/elements/1.1/"
-ATOM = "http://www.w3.org/2005/Atom"
-RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-
-
+# --- RSS パーサー ---
 def _text(el) -> str:
     return (el.text or "").strip() if el is not None else ""
 
 
-# --- RSS パーサー ---
 def parse_rss(data: bytes) -> list[dict]:
-    """RSS 1.0(RDF) / RSS 2.0 / Atom フィードを解析して記事リストを返す"""
+    """RSS 1.0(RDF) / RSS 2.0 / Atom を解析。
+    はてブRDFの場合は hatena:bookmarkcount も返す。"""
     items = []
     try:
         root = ET.fromstring(data)
@@ -120,53 +116,72 @@ def parse_rss(data: bytes) -> list[dict]:
         except Exception:
             return items
 
-    ns = root.tag  # 例: "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF"
+    ns = root.tag
 
     # --- Atom ---
-    if f"{{{ATOM}}}feed" in ns or root.tag == f"{{{ATOM}}}feed":
+    if root.tag == f"{{{ATOM}}}feed":
         for entry in root.findall(f"{{{ATOM}}}entry"):
             title_el = entry.find(f"{{{ATOM}}}title")
-            link_el = entry.find(f"{{{ATOM}}}link")
-            _pub = entry.find(f"{{{ATOM}}}published")
-            pub_el = _pub if _pub is not None else entry.find(f"{{{ATOM}}}updated")
-            _sum = entry.find(f"{{{ATOM}}}summary")
-            summary_el = _sum if _sum is not None else entry.find(f"{{{ATOM}}}content")
+            link_el  = entry.find(f"{{{ATOM}}}link")
+            _pub     = entry.find(f"{{{ATOM}}}published")
+            pub_el   = _pub if _pub is not None else entry.find(f"{{{ATOM}}}updated")
+            _sum     = entry.find(f"{{{ATOM}}}summary")
+            sum_el   = _sum if _sum is not None else entry.find(f"{{{ATOM}}}content")
             title = _text(title_el)
-            url = ""
-            if link_el is not None:
-                url = link_el.get("href") or _text(link_el)
-            pub = _text(pub_el)[:10]
-            desc = _text(summary_el)
+            url   = link_el.get("href") or _text(link_el) if link_el is not None else ""
+            pub   = _text(pub_el)[:10]
+            desc  = _text(sum_el)
             if title and url:
                 items.append({"title": title, "url": url, "date": pub, "desc": desc, "meta": {}})
         return items
 
     # --- RSS 1.0 (RDF) ---
-    if f"{{{RDF}}}RDF" in ns or root.tag == f"{{{RDF}}}RDF":
+    if root.tag == f"{{{RDF}}}RDF":
         for item in root.findall(f"{{{RSS1}}}item"):
-            title = _text(item.find(f"{{{RSS1}}}title"))
-            url = _text(item.find(f"{{{RSS1}}}link"))
-            pub = _text(item.find(f"{{{DC}}}date"))[:10]
-            desc = _text(item.find(f"{{{RSS1}}}description"))
+            title  = _text(item.find(f"{{{RSS1}}}title"))
+            url    = _text(item.find(f"{{{RSS1}}}link"))
+            pub    = _text(item.find(f"{{{DC}}}date"))[:10]
+            desc   = _text(item.find(f"{{{RSS1}}}description"))
+            bmarks = _text(item.find(f"{{{HATENA}}}bookmarkcount"))
             if title and url:
-                items.append({"title": title, "url": url, "date": pub, "desc": desc, "meta": {}})
+                items.append({
+                    "title": title, "url": url, "date": pub, "desc": desc,
+                    "meta": {"bookmarks": int(bmarks) if bmarks.isdigit() else 0},
+                })
         return items
 
     # --- RSS 2.0 ---
-    channel = root.find("channel")
-    if channel is None:
-        channel = root
+    _ch = root.find("channel")
+    channel = _ch if _ch is not None else root
     for item in channel.findall("item"):
-        title = _text(item.find("title"))
-        url = _text(item.find("link"))
-        _pd = item.find("pubDate")
+        title  = _text(item.find("title"))
+        url    = _text(item.find("link"))
+        _pd    = item.find("pubDate")
         pub_el = _pd if _pd is not None else item.find(f"{{{DC}}}date")
-        pub = _text(pub_el)[:16]
-        desc = _text(item.find("description"))
+        pub    = _text(pub_el)[:16]
+        desc   = _text(item.find("description"))
         if title and url:
             items.append({"title": title, "url": url, "date": pub, "desc": desc, "meta": {}})
-
     return items
+
+
+# --- 翻訳 ---
+def translate_ja(text: str) -> str:
+    """Google Translate 非公式 API でテキストを日本語に翻訳する"""
+    if not text:
+        return ""
+    url = (
+        "https://translate.googleapis.com/translate_a/single"
+        f"?client=gtx&sl=en&tl=ja&dt=t&q={urllib.parse.quote(text)}"
+    )
+    r = get(url, timeout=10)
+    if not r:
+        return ""
+    try:
+        data = r.json()
+        return "".join(chunk[0] for chunk in data[0] if chunk[0])
+    except Exception:
+        return ""
 
 
 # --- 各ソース収集 ---
@@ -182,134 +197,184 @@ QIITA_TAGS = [
 
 
 def collect_zenn() -> list[dict]:
-    # Zennのトピック別RSSは /topics/{topic}/feed 形式
-    urls = [f"https://zenn.dev/topics/{t}/feed" for t in ZENN_TOPICS]
-    urls.insert(0, "https://zenn.dev/feed")
+    """Zenn API: topicごとに liked_count 付きで取得"""
+    seen: set[str] = set()
+    articles: list[dict] = []
 
-    seen = set()
-    articles = []
+    def fetch_topic(topic: str) -> list[dict]:
+        url = f"https://zenn.dev/api/articles?topicname={topic}&order=liked_count&count=15"
+        r = get(url)
+        if not r:
+            return []
+        result = []
+        for a in r.json().get("articles", []):
+            slug = a.get("slug", "")
+            art_url = f"https://zenn.dev/articles/{slug}"
+            title = a.get("title", "")
+            pub = (a.get("published_at") or "")[:10]
+            likes = a.get("liked_count", 0) or 0
+            if title and slug:
+                result.append({
+                    "title": title, "url": art_url, "date": pub, "desc": "",
+                    "meta": {"likes": likes},
+                })
+        return result
 
-    def fetch_one(url):
-        data = fetch_url(url)
-        return parse_rss(data) if data else []
+    # トップページ（全トレンド）
+    r = get("https://zenn.dev/api/articles?order=liked_count&count=20")
+    if r:
+        for a in r.json().get("articles", []):
+            slug = a.get("slug", "")
+            art_url = f"https://zenn.dev/articles/{slug}"
+            if art_url not in seen and a.get("title"):
+                seen.add(art_url)
+                articles.append({
+                    "title": a["title"], "url": art_url,
+                    "date": (a.get("published_at") or "")[:10], "desc": "",
+                    "meta": {"likes": a.get("liked_count", 0) or 0},
+                })
 
-    with ThreadPoolExecutor(max_workers=len(urls)) as ex:
-        for items in ex.map(fetch_one, urls):
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for items in ex.map(fetch_topic, ZENN_TOPICS):
             for item in items:
                 if item["url"] not in seen:
                     seen.add(item["url"])
-                    tag = classify_tag(item["title"], item["desc"])
-                    item["tag"] = tag
+                    item["tag"] = classify_tag(item["title"])
                     articles.append(item)
 
+    # liked_count降順にソート
+    articles.sort(key=lambda a: a["meta"].get("likes", 0), reverse=True)
+    for a in articles:
+        if "tag" not in a:
+            a["tag"] = classify_tag(a["title"])
     return articles[:40]
 
 
 def collect_qiita() -> list[dict]:
-    urls = [f"https://qiita.com/tags/{urllib.parse.quote(t)}/feed" for t in QIITA_TAGS]
-    urls.insert(0, "https://qiita.com/popular-items/feed")
+    """Qiita API v2: タグ別に likes_count 付きで取得"""
+    seen: set[str] = set()
+    articles: list[dict] = []
 
-    seen = set()
-    articles = []
+    def fetch_tag(tag: str) -> list[dict]:
+        encoded = urllib.parse.quote(tag)
+        url = f"https://qiita.com/api/v2/items?per_page=15&query=tag:{encoded}+stocks:>3"
+        r = get(url)
+        if not r:
+            return []
+        result = []
+        for it in r.json():
+            art_url = it.get("url", "")
+            title = it.get("title", "")
+            if title and art_url:
+                result.append({
+                    "title": title, "url": art_url,
+                    "date": (it.get("created_at") or "")[:10], "desc": "",
+                    "meta": {"likes": it.get("likes_count", 0) or 0},
+                })
+        return result
 
-    def fetch_one(url):
-        data = fetch_url(url)
-        return parse_rss(data) if data else []
-
-    with ThreadPoolExecutor(max_workers=len(urls)) as ex:
-        for items in ex.map(fetch_one, urls):
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for items in ex.map(fetch_tag, QIITA_TAGS):
             for item in items:
                 if item["url"] not in seen:
                     seen.add(item["url"])
-                    tag = classify_tag(item["title"], item["desc"])
-                    item["tag"] = tag
+                    item["tag"] = classify_tag(item["title"])
                     articles.append(item)
 
+    articles.sort(key=lambda a: a["meta"].get("likes", 0), reverse=True)
     return articles[:40]
 
 
 def collect_hatena() -> list[dict]:
-    # はてなブックマーク: ホットエントリRSS + キーワード検索RSS (RSS1.0/RDF形式)
+    """はてなブックマーク RSS/RDF: bookmarkcount 付きで取得"""
     urls = [
         "https://b.hatena.ne.jp/hotentry/it.rss",
         "https://b.hatena.ne.jp/q/AI?date_range=1w&sort=hot&mode=rss&safe=on&target=entry&users=3",
         "https://b.hatena.ne.jp/q/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92?date_range=1w&sort=hot&mode=rss&safe=on&target=entry&users=3",
         "https://b.hatena.ne.jp/q/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0?date_range=1w&sort=hot&mode=rss&safe=on&target=entry&users=3",
     ]
-    seen = set()
-    articles = []
+    seen: set[str] = set()
+    articles: list[dict] = []
 
-    def fetch_one(url):
-        data = fetch_url(url)
-        return parse_rss(data) if data else []
+    def fetch_one(url: str) -> list[dict]:
+        r = get(url)
+        return parse_rss(r.content) if r else []
 
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         for items in ex.map(fetch_one, urls):
             for item in items:
                 if item["url"] not in seen:
                     seen.add(item["url"])
-                    tag = classify_tag(item["title"], item["desc"])
-                    item["tag"] = tag
+                    item["tag"] = classify_tag(item["title"], item["desc"])
                     articles.append(item)
 
+    articles.sort(key=lambda a: a["meta"].get("bookmarks", 0), reverse=True)
     return articles[:30]
 
 
 def collect_hn() -> list[dict]:
-    """Algolia API で HN のスコア100以上 or コメント50以上の記事を取得"""
-    url = "https://hn.algolia.com/api/v1/search?tags=story&numericFilters=points%3E80&hitsPerPage=30&attributesToRetrieve=title,url,points,num_comments,created_at"
-    data = fetch_url(url)
-    if not data:
-        return []
-    try:
-        hits = json.loads(data).get("hits", [])
-    except Exception:
+    """Algolia API + Google Translate でタイトルを日本語訳"""
+    url = (
+        "https://hn.algolia.com/api/v1/search"
+        "?tags=story&numericFilters=points%3E80&hitsPerPage=20"
+        "&attributesToRetrieve=title,url,points,num_comments,created_at,objectID"
+    )
+    r = get(url)
+    if not r:
         return []
     articles = []
-    for h in hits:
+    for h in r.json().get("hits", []):
         title = h.get("title", "")
         story_url = h.get("url", "")
         if not title or not story_url:
             continue
-        pts = h.get("points", 0)
-        cmts = h.get("num_comments", 0)
-        date = (h.get("created_at") or "")[:10]
-        tag = classify_tag(title)
+        hn_url = f"https://news.ycombinator.com/item?id={h.get('objectID', '')}"
         articles.append({
             "title": title,
             "url": story_url,
-            "date": date,
+            "date": (h.get("created_at") or "")[:10],
             "desc": "",
-            "tag": tag,
-            "meta": {"points": pts, "comments": cmts},
+            "tag": classify_tag(title),
+            "meta": {
+                "points": h.get("points", 0),
+                "comments": h.get("num_comments", 0),
+                "hn_url": hn_url,
+                "title_ja": "",
+            },
         })
+
+    # タイトルを日本語訳（順次、レート制限回避）
+    print(f"  HN翻訳中... ({len(articles)}件)")
+    for a in articles:
+        a["meta"]["title_ja"] = translate_ja(a["title"])
+        time.sleep(0.15)
+
     return articles
 
 
 def collect_nikkei() -> list[dict]:
-    # 日経xTech RSS (RSS 1.0/RDF形式) + ITmedia AI+
+    """日経xTech + ITmedia AI+ RSS"""
     urls = [
         "https://xtech.nikkei.com/rss/index.rdf",
         "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml",
     ]
-    seen = set()
-    articles = []
+    seen: set[str] = set()
+    articles: list[dict] = []
     for url in urls:
-        data = fetch_url(url)
-        if not data:
+        r = get(url)
+        if not r:
             continue
-        for item in parse_rss(data):
+        for item in parse_rss(r.content):
             if item["url"] not in seen:
                 seen.add(item["url"])
                 tag = classify_tag(item["title"], item["desc"])
-                # 興味領域のみ残す
                 if tag in ("ai", "ml", "cv", "eco", "dev"):
                     item["tag"] = tag
                     articles.append(item)
     return articles[:20]
 
 
-# --- Markdownレンダリング ---
+# --- Markdown ---
 CSS = """<style>
 .tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
 .tag-ai   { color: #bf5a00; background: #fff3e0; }
@@ -328,6 +393,8 @@ CSS = """<style>
 .item { padding: 8px 0; border-bottom: 1px solid #eee; }
 .item-title { font-size: 0.95rem; font-weight: 600; }
 .item-meta { font-size: 0.78rem; color: #888; margin-top: 2px; }
+details summary { cursor: pointer; font-size: 0.78rem; color: #888; margin-top: 4px; }
+details p { font-size: 0.82rem; margin: 4px 0 0 12px; color: #555; }
 </style>"""
 
 TAB_NAV = """<div class="tab-nav">
@@ -348,26 +415,56 @@ function switchTab(id, btn) {
 </script>"""
 
 
-def render_items(articles: list[dict], tab_id: str, extra_meta_fn=None) -> list[str]:
-    lines = [f'<div id="tab-{tab_id}" class="tab-pane{" active" if tab_id == "zenn" else ""}">']
+def esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_key: str) -> list[str]:
+    active = " active" if tab_id == "zenn" else ""
+    lines = [f'<div id="tab-{tab_id}" class="tab-pane{active}">']
     for a in articles:
-        title = a["title"].replace('"', '&quot;').replace("<", "&lt;").replace(">", "&gt;")
-        url = a["url"]
-        date = a["date"][:7] if len(a.get("date", "")) >= 7 else a.get("date", "")
-        ts = tag_span(a.get("tag", "other"))
-        meta_parts = []
-        if date:
-            meta_parts.append(date)
-        if extra_meta_fn:
-            meta_parts += extra_meta_fn(a)
-        meta_parts.append(ts)
-        meta_str = " &nbsp; ".join(meta_parts)
+        title = esc(a["title"])
+        url   = a["url"]
+        date  = a.get("date", "")[:7]
+        count = a["meta"].get(count_key, 0)
+        ts    = tag_span(a.get("tag", "other"))
+        count_str = f"{count_icon} {count}" if count else ""
+        meta_parts = [p for p in [date, count_str] if p] + [ts]
         lines += [
             '<div class="item">',
             f'  <div class="item-title"><a href="{url}">{title}</a></div>',
-            f'  <div class="item-meta">{meta_str}</div>',
+            f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
             "</div>",
         ]
+    lines.append("</div>")
+    return lines
+
+
+def render_hn(articles: list[dict]) -> list[str]:
+    lines = ['<div id="tab-hn" class="tab-pane">']
+    for a in articles:
+        title    = esc(a["title"])
+        title_ja = esc(a["meta"].get("title_ja", ""))
+        url      = a["url"]
+        hn_url   = a["meta"].get("hn_url", "")
+        pts      = a["meta"].get("points", 0)
+        cmts     = a["meta"].get("comments", 0)
+        date     = a.get("date", "")[:7]
+        ts       = tag_span(a.get("tag", "other"))
+        meta_parts = [p for p in [date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
+        lines += [
+            '<div class="item">',
+            f'  <div class="item-title"><a href="{url}">{title}</a></div>',
+            f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
+        ]
+        if title_ja:
+            lines += [
+                "  <details>",
+                f'    <summary>日本語訳を見る</summary>',
+                f'    <p>{title_ja} &nbsp; <a href="{hn_url}">💬 HN議論</a></p>',
+                "  </details>",
+            ]
+        lines.append("</div>")
     lines.append("</div>")
     return lines
 
@@ -376,28 +473,26 @@ def main():
     now = datetime.now(JST)
     date_label = now.strftime("%Y-%m-%d")
     time_label = now.strftime("%H:%M")
-    timestamp = now.strftime("%Y-%m-%d-%H-%M")
+    timestamp  = now.strftime("%Y-%m-%d-%H-%M")
 
     print("収集開始...")
 
-    # 並列収集
     with ThreadPoolExecutor(max_workers=5) as ex:
-        f_zenn = ex.submit(collect_zenn)
-        f_qiita = ex.submit(collect_qiita)
+        f_zenn   = ex.submit(collect_zenn)
+        f_qiita  = ex.submit(collect_qiita)
         f_hatena = ex.submit(collect_hatena)
-        f_hn = ex.submit(collect_hn)
+        f_hn     = ex.submit(collect_hn)
         f_nikkei = ex.submit(collect_nikkei)
 
-    zenn_articles = f_zenn.result()
-    qiita_articles = f_qiita.result()
+    zenn_articles   = f_zenn.result()
+    qiita_articles  = f_qiita.result()
     hatena_articles = f_hatena.result()
-    hn_articles = f_hn.result()
+    hn_articles     = f_hn.result()
     nikkei_articles = f_nikkei.result()
 
     print(f"  Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, HN: {len(hn_articles)}, 日経: {len(nikkei_articles)}")
 
-    # Markdown構築
     lines: list[str] = [
         "---",
         "layout: post",
@@ -412,30 +507,17 @@ def main():
         "",
     ]
 
-    lines += render_items(zenn_articles, "zenn")
+    lines += render_standard(zenn_articles,   "zenn",   "❤️",  "likes")
     lines += [""]
-    lines += render_items(qiita_articles, "qiita")
+    lines += render_standard(qiita_articles,  "qiita",  "👍",  "likes")
     lines += [""]
-    lines += render_items(hatena_articles, "hatena")
+    lines += render_standard(hatena_articles, "hatena", "🔖", "bookmarks")
     lines += [""]
-    lines += render_items(nikkei_articles, "nikkei")
+    lines += render_standard(nikkei_articles, "nikkei", "",   "")
     lines += [""]
-
-    # HN は points/comments を追加
-    def hn_meta(a):
-        pts = a["meta"].get("points", 0)
-        cmts = a["meta"].get("comments", 0)
-        parts = []
-        if pts:
-            parts.append(f"🔥 {pts} pts")
-        if cmts:
-            parts.append(f"💬 {cmts}")
-        return parts
-
-    lines += render_items(hn_articles, "hn", extra_meta_fn=hn_meta)
+    lines += render_hn(hn_articles)
     lines += ["", SWITCH_JS, ""]
 
-    # ファイル保存
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / f"{timestamp}-neta-trend.md"
     out_path.write_text("\n".join(lines), encoding="utf-8")
