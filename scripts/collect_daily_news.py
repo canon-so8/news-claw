@@ -260,7 +260,7 @@ def collect_zenn() -> list[dict]:
         result = []
         for a in r.json().get("articles", []):
             slug = a.get("slug", "")
-            art_url = f"https://zenn.dev/articles/{slug}"
+            art_url = f"https://zenn.dev{a.get('path', f'/articles/{slug}')}"
             title = a.get("title", "")
             pub = (a.get("published_at") or "")[:10]
             likes = a.get("liked_count", 0) or 0
@@ -277,7 +277,7 @@ def collect_zenn() -> list[dict]:
     if r:
         for a in r.json().get("articles", []):
             slug = a.get("slug", "")
-            art_url = f"https://zenn.dev/articles/{slug}"
+            art_url = f"https://zenn.dev{a.get('path', f'/articles/{slug}')}"
             if art_url not in seen and a.get("title"):
                 seen.add(art_url)
                 articles.append({
@@ -523,7 +523,7 @@ def render_hn(articles: list[dict]) -> list[str]:
             lines += [
                 "  <details>",
                 f'    <summary>日本語訳を見る</summary>',
-                f'    <p>{title_ja} &nbsp; <a href="{hn_url}">💬 HN議論</a></p>',
+                f'    <p>{title_ja}</p>',
                 "  </details>",
             ]
         lines.append("</div>")
