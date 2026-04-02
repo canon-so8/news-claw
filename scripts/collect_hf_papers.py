@@ -89,23 +89,40 @@ def assign_tags(paper: dict) -> list[str]:
 
 
 DEEPL_AUTH_KEY = os.environ.get("DEEPL_AUTH_KEY", "")
-DEEPL_API_URL = (
-    "https://api-free.deepl.com/v2/translate"
+DEEPL_ENABLED = os.environ.get("DEEPL_ENABLED", "false").lower() == "true"
+DEEPL_API_BASE = (
+    "https://api-free.deepl.com"
     if DEEPL_AUTH_KEY.endswith(":fx")
-    else "https://api.deepl.com/v2/translate"
+    else "https://api.deepl.com"
 )
-deepl_chars_used = 0  # DeepL消費文字数カウンター
+DEEPL_MONTHLY_LIMIT = 450_000  # この文字数を超えたらGoogle Translateにフォールバック
+deepl_chars_used = 0  # 今回の実行での消費文字数
+
+
+def _deepl_monthly_usage() -> int:
+    """DeepL APIの今月の使用量を取得"""
+    try:
+        resp = requests.get(
+            f"{DEEPL_API_BASE}/v2/usage",
+            headers={"Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}"},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return resp.json().get("character_count", 0)
+    except Exception:
+        pass
+    return 0
 
 
 def translate_deepl(text: str) -> str:
-    """DeepL API で英語→日本語翻訳（Free/Pro自動判定）"""
+    """DeepL API で英語→日本語翻訳（月間閾値超過時はスキップ）"""
     global deepl_chars_used
-    if not DEEPL_AUTH_KEY or not text:
+    if not DEEPL_AUTH_KEY or not DEEPL_ENABLED or not text:
         return ""
     truncated = text[:500]
     try:
         resp = requests.post(
-            DEEPL_API_URL,
+            f"{DEEPL_API_BASE}/v2/translate",
             headers={"Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}"},
             data={"text": truncated, "target_lang": "JA"},
             timeout=15,
@@ -222,9 +239,16 @@ def main():
         p["tags"] = assign_tags(p)
 
     # DeepL/Google Translateでアブスト翻訳
-    if DEEPL_AUTH_KEY:
-        endpoint = "api-free" if DEEPL_AUTH_KEY.endswith(":fx") else "api (Pro)"
-        print(f"  アブスト翻訳中... ({len(filtered)}件, DeepL={endpoint}, key=...{DEEPL_AUTH_KEY[-6:]})")
+    if DEEPL_AUTH_KEY and DEEPL_ENABLED:
+        monthly = _deepl_monthly_usage()
+        print(f"  DeepL月間使用量: {monthly:,}/{DEEPL_MONTHLY_LIMIT:,} 文字")
+        if monthly >= DEEPL_MONTHLY_LIMIT:
+            print(f"  ⚠ 月間閾値超過 → Google Translateにフォールバック")
+            # DEEPL_ENABLEDを無効化してフォールバック
+            globals()["DEEPL_ENABLED"] = False
+        else:
+            endpoint = "api-free" if DEEPL_AUTH_KEY.endswith(":fx") else "api (Pro)"
+            print(f"  アブスト翻訳中... ({len(filtered)}件, DeepL={endpoint})")
     else:
         print(f"  アブスト翻訳中... ({len(filtered)}件, Google Translate)")
     for p in filtered:
@@ -261,29 +285,22 @@ def main():
             f' <span class="tag tag-hf">★ {p["github_stars"]} stars</span>'
             if p["github_stars"] > 0 else ""
         )
-        github_link = f' · [{p["first_author"]}]' if p["first_author"] else ""
-        github_repo = f' · [GitHub]({p["github_repo"]})' if p["github_repo"] else ""
         arxiv_url = f'https://arxiv.org/abs/{p["id"]}'
         hf_date = p.get("hf_date", "")
         summary_ja = p.get("summary_ja", "")
+        github_link_html = f' · <a href="{p["github_repo"]}">GitHub</a>' if p["github_repo"] else ""
 
         detail_lines = [
-            f'<div class="paper" data-tags="{data_tags}" markdown="1">',
-            "",
-            f'**[{p["title"]}]({arxiv_url})**',
-            "",
-            f'{tag_spans} {upvote_span}{star_span} · {hf_date[5:]}{github_link}{github_repo}',
-            "",
+            f'<div class="paper" data-tags="{data_tags}">',
+            f'<p><strong><a href="{arxiv_url}">{p["title"]}</a></strong></p>',
+            f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date[5:]} · {p["first_author"]}{github_link_html}</p>',
         ]
         if summary_ja:
             detail_lines += [
-                '<details markdown="1">',
+                '<details>',
                 '<summary>要約を読む</summary>',
-                "",
-                f'> {summary_ja}',
-                "",
+                f'<p>{summary_ja}</p>',
                 '</details>',
-                "",
             ]
         detail_lines += ["</div>", ""]
         lines += detail_lines

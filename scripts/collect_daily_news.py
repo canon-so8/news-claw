@@ -218,23 +218,24 @@ def parse_rss(data: bytes) -> list[dict]:
 
 # --- 翻訳 ---
 DEEPL_AUTH_KEY = os.environ.get("DEEPL_AUTH_KEY", "")
-DEEPL_API_URL = (
-    "https://api-free.deepl.com/v2/translate"
+DEEPL_ENABLED = os.environ.get("DEEPL_ENABLED", "false").lower() == "true"
+DEEPL_API_BASE = (
+    "https://api-free.deepl.com"
     if DEEPL_AUTH_KEY.endswith(":fx")
-    else "https://api.deepl.com/v2/translate"
+    else "https://api.deepl.com"
 )
-deepl_chars_used = 0  # DeepL消費文字数カウンター
+deepl_chars_used = 0
 
 
 def translate_deepl(text: str) -> str:
-    """DeepL API で英語→日本語翻訳（Free/Pro自動判定）"""
+    """DeepL API で英語→日本語翻訳"""
     global deepl_chars_used
-    if not DEEPL_AUTH_KEY or not text:
+    if not DEEPL_AUTH_KEY or not DEEPL_ENABLED or not text:
         return ""
     truncated = text[:500]
     try:
         resp = SESSION.post(
-            DEEPL_API_URL,
+            f"{DEEPL_API_BASE}/v2/translate",
             headers={"Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}"},
             data={"text": truncated, "target_lang": "JA"},
             timeout=15,
