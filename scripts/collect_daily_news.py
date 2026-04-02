@@ -39,11 +39,14 @@ HATENA = "http://www.hatena.ne.jp/info/xmlns#"
 
 # --- タグ判定（優先順位: AI > ML > CV > POEM > ECO > DEV > other）---
 AI_KEYWORDS   = [
-    "llm", "agent", "agentic", "gpt", "claude", "gemini", "openai", "anthropic",
-    "chatgpt", "生成ai", "大規模言語", "プロンプト", "rag", "chain-of-thought",
-    "reasoning", "fine-tun", "ファインチューニング", "alignment", "ai agent",
-    "mcp ", "claude code", "copilot", "cursor ", "人工知能", "生成モデル",
+    "llm", "agentic", "gpt-4", "gpt-5", "claude ", "gemini ", "openai",
+    "anthropic", "chatgpt", "生成ai", "大規模言語", "プロンプト", "rag ",
+    "chain-of-thought", "fine-tun", "ファインチューニング", "alignment",
+    "ai agent", "mcp ", "claude code", "人工知能", "生成モデル",
+    "notebooklm", "ai coding", "aiネイティブ", "ai駆動",
 ]
+# copilot/cursor/agentは文脈で分かれるため、AI専用キーワードと組み合わせて判定
+AI_COMBO_KEYWORDS = ["copilot", "cursor ", "agent"]  # 他のAIキーワードと共起でAI判定
 ML_KEYWORDS   = [
     "machine learning", "deep learning", "reinforcement learning", "pytorch", "tensorflow",
     "kaggle", "neural network", "transformer", "bert", "llama", "optimizer",
@@ -65,10 +68,12 @@ CV_KEYWORDS   = [
     "ロボット", "robot", "lerobot", "3次元",
 ]
 POEM_KEYWORDS = [
-    "キャリア", "エンジニア哲学", "転職", "仕事術", "思想", "ポエム",
-    "生き方", "働き方", "マインド", "組織論", "チームビルディング",
-    "エンジニアリング文化", "リーダーシップ", "マネジメント論", "culture",
-    "philosophy", "エンジニアとして", "技術者として", "プログラマとして",
+    "エンジニア哲学", "仕事術", "ポエム", "エンジニアの心得",
+    "生き方", "働き方", "マインドセット", "組織論", "チームビルディング",
+    "リーダーシップ", "マネジメント論",
+    "エンジニアとして", "技術者として", "プログラマとして",
+    "未経験から", "未経験でも", "新人エンジニア",
+    "折れない", "後悔しない", "成長するため",
 ]
 ECO_KEYWORDS  = [
     "経済", "半導体", "nvidia", "tsmc", "テック企業", "産業動向", "規制",
@@ -112,8 +117,10 @@ _AI_SOLO_RE = re.compile(r'(?<![a-z])ai(?![a-z])')
 
 def classify_tag(title: str, desc: str = "") -> str:
     text = (title + " " + desc).lower()
-    if any(k in text for k in AI_KEYWORDS):   return "ai"
-    if _AI_SOLO_RE.search(text):               return "ai"
+    # AI: 直接キーワード or 単体"ai" or コンボキーワード（copilot等+AI文脈）
+    has_ai_direct = any(k in text for k in AI_KEYWORDS) or _AI_SOLO_RE.search(text)
+    has_ai_combo = any(k in text for k in AI_COMBO_KEYWORDS) and has_ai_direct
+    if has_ai_direct or has_ai_combo:          return "ai"
     if any(k in text for k in ML_KEYWORDS):   return "ml"
     if any(k in text for k in CV_KEYWORDS):   return "cv"
     if any(k in text for k in POEM_KEYWORDS): return "poem"
@@ -403,9 +410,10 @@ def collect_qiita() -> list[dict]:
                     seen.add(item["url"])
                     tag_articles.append(item)
 
-    # トレンド順を維持（フィード順）+ タグ別をいいね数順で後ろに追加
-    tag_articles.sort(key=lambda a: a["meta"].get("likes", 0), reverse=True)
-    return (trend_articles + tag_articles)[:40]
+    # 全記事をいいね数順でソート
+    all_articles = trend_articles + tag_articles
+    all_articles.sort(key=lambda a: a["meta"].get("likes", 0), reverse=True)
+    return all_articles[:40]
 
 
 def collect_hatena() -> list[dict]:
