@@ -315,14 +315,15 @@ def collect_zenn() -> list[dict]:
             return []
         return [p for a in r.json().get("articles", []) if (p := _parse(a))]
 
-    # トップページ（デイリートレンド）
-    r = get("https://zenn.dev/api/articles?order=daily&count=30")
-    if r:
-        for a in r.json().get("articles", []):
-            p = _parse(a)
-            if p and p["url"] not in seen:
-                seen.add(p["url"])
-                articles.append(p)
+    # トップページ: Techs + Ideas（デイリートレンド）
+    for atype in ("tech", "idea"):
+        r = get(f"https://zenn.dev/api/articles?order=daily&count=30&article_type={atype}")
+        if r:
+            for a in r.json().get("articles", []):
+                p = _parse(a)
+                if p and p["url"] not in seen:
+                    seen.add(p["url"])
+                    articles.append(p)
 
     with ThreadPoolExecutor(max_workers=6) as ex:
         for items in ex.map(fetch_topic, ZENN_TOPICS):
