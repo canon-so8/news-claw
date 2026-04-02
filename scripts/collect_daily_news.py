@@ -288,7 +288,7 @@ QIITA_TAGS = [
 
 
 def collect_zenn() -> list[dict]:
-    """Zenn API: 最新順で取得してからいいね数でソート（3日フィルタを通るよう order=latest）"""
+    """Zenn API: デイリートレンド順で取得してからいいね数でソート"""
     seen: set[str] = set()
     articles: list[dict] = []
 
@@ -309,14 +309,14 @@ def collect_zenn() -> list[dict]:
         }
 
     def fetch_topic(topic: str) -> list[dict]:
-        url = f"https://zenn.dev/api/articles?topicname={topic}&order=latest&count=20"
+        url = f"https://zenn.dev/api/articles?topicname={topic}&order=daily&count=20"
         r = get(url)
         if not r:
             return []
         return [p for a in r.json().get("articles", []) if (p := _parse(a))]
 
-    # トップページ（最新トレンド）
-    r = get("https://zenn.dev/api/articles?order=latest&count=30")
+    # トップページ（デイリートレンド）
+    r = get("https://zenn.dev/api/articles?order=daily&count=30")
     if r:
         for a in r.json().get("articles", []):
             p = _parse(a)
@@ -339,13 +339,14 @@ def collect_zenn() -> list[dict]:
 
 
 def collect_qiita() -> list[dict]:
-    """Qiita API v2: タグ別に likes_count 付きで取得"""
+    """Qiita API v2: タグ別に直近7日のいいね数が多い記事を取得"""
     seen: set[str] = set()
     articles: list[dict] = []
+    since = (datetime.now(JST) - timedelta(days=7)).strftime("%Y-%m-%d")
 
     def fetch_tag(tag: str) -> list[dict]:
         encoded = urllib.parse.quote(tag)
-        url = f"https://qiita.com/api/v2/items?per_page=15&query=tag:{encoded}+stocks:>3"
+        url = f"https://qiita.com/api/v2/items?per_page=20&query=tag:{encoded}+created:>={since}+stocks:>3"
         r = get(url)
         if not r:
             return []
@@ -364,8 +365,8 @@ def collect_qiita() -> list[dict]:
                 })
         return result
 
-    # トップページ（全体トレンド）
-    r = get("https://qiita.com/api/v2/items?per_page=20&query=stocks:>5")
+    # 全体トレンド（直近7日・ストック数多め）
+    r = get(f"https://qiita.com/api/v2/items?per_page=20&query=created:>={since}+stocks:>5")
     if r:
         for it in r.json():
             art_url = it.get("url", "")
