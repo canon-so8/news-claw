@@ -50,16 +50,27 @@ jobs:
         run: |
           python - <<'EOF'
           import json, urllib.request, os
-          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+
           token = os.environ.get("SLACK_BOT_TOKEN", "")
-          now = datetime.now(timezone(timedelta(hours=9)))
-          date_str = now.strftime("%Y-%m-%d")
-          text = f"<https://canon-so8.github.io/trend-news/|GithubActions定期実行:{date_str}のニュース/トレンド論文>"
-          data = json.dumps({"channel": "C0AM20RBC4R", "text": text}).encode("utf-8")
-          req = urllib.request.Request(
-              "https://slack.com/api/chat.postMessage",
-              data=data,
-              headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
-          )
-          print(json.loads(urllib.request.urlopen(req).read()).get("ok"))
+          if not token:
+              print("SLACK_BOT_TOKEN未設定。スキップ。")
+              exit(0)
+
+          def post(text):
+              data = json.dumps({"channel": "C0AM20RBC4R", "text": text}).encode("utf-8")
+              req = urllib.request.Request(
+                  "https://slack.com/api/chat.postMessage",
+                  data=data,
+                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
+              )
+              print(json.loads(urllib.request.urlopen(req).read()).get("ok"))
+
+          daily_url = Path("/tmp/daily_url.txt").read_text().strip() if Path("/tmp/daily_url.txt").exists() else ""
+          hf_url    = Path("/tmp/hf_url.txt").read_text().strip()    if Path("/tmp/hf_url.txt").exists()    else ""
+
+          if daily_url:
+              post(f"📰 <{daily_url}|本日のニュース（Zenn・Qiita・はてブ・HN）>")
+          if hf_url:
+              post(f"📄 <{hf_url}|本日のトレンド論文（HuggingFace）>")
           EOF

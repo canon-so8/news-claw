@@ -404,12 +404,11 @@ def collect_hn() -> list[dict]:
             },
         })
 
-    # Geminiがない場合のみGoogle Translateでタイトル翻訳
-    if not os.environ.get("GEMINI_API_TOKEN"):
-        print(f"  HN翻訳中... ({len(articles)}件)")
-        for a in articles:
-            a["meta"]["title_ja"] = translate_ja(a["title"])
-            time.sleep(0.15)
+    # Google Translate で常に翻訳（Geminiが後でオーバーライドする）
+    print(f"  HN翻訳中... ({len(articles)}件)")
+    for a in articles:
+        a["meta"]["title_ja"] = translate_ja(a["title"])
+        time.sleep(0.15)
 
     return articles
 
@@ -492,38 +491,44 @@ def gemini_classify_tags(articles: list[dict], api_key: str) -> dict[int, str]:
 
 
 def gemini_hn_summaries(hn_articles: list[dict], api_key: str) -> dict[int, str]:
-    """HN記事タイトルから日本語要約を生成。{index: summary} を返す"""
+    """HN記事タイトルから日本語要約を15件ずつバッチ生成。{index: summary} を返す"""
     client = _gemini_client(api_key)
     if not client:
         return {}
 
-    titles_json = json.dumps(
-        [{"id": i, "title": a["title"], "pts": a["meta"].get("points", 0)}
-         for i, a in enumerate(hn_articles)],
-        ensure_ascii=False,
-    )
-    prompt = f"""あなたは日本語のテックニュース解説者です。
+    results: dict[int, str] = {}
+    batch_size = 15
+    for start in range(0, len(hn_articles), batch_size):
+        batch = hn_articles[start:start + batch_size]
+        batch_json = json.dumps(
+            [{"id": start + i, "title": a["title"], "pts": a["meta"].get("points", 0)}
+             for i, a in enumerate(batch)],
+            ensure_ascii=False,
+        )
+        prompt = f"""あなたは日本語のテックニュース解説者です。
 Hacker Newsで話題の記事を**必ず日本語**で、各記事2〜3文で要約してください。
 「何についての記事か → なぜHNで注目されているか」の順で書いてください。
 英語で回答しないでください。
 
 JSONのみ返してください:
-[{{"id": 0, "summary": "日本語の要約"}}, ...]
+[{{"id": {start}, "summary": "日本語の要約"}}, ...]
 
 タイトル:
-{titles_json}"""
-
-    try:
-        resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        text = resp.text.strip()
-        m = re.search(r'\[.*\]', text, re.DOTALL)
-        if m:
-            text = m.group()
-        result = json.loads(text)
-        return {item["id"]: item["summary"] for item in result if item.get("summary")}
-    except Exception as e:
-        print(f"  Gemini HN要約エラー: {e}", file=sys.stderr)
-        return {}
+{batch_json}"""
+        try:
+            resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+            text = resp.text.strip()
+            m = re.search(r'\[.*\]', text, re.DOTALL)
+            if m:
+                text = m.group()
+            for item in json.loads(text):
+                if item.get("summary"):
+                    results[item["id"]] = item["summary"]
+        except Exception as e:
+            print(f"  Gemini HN要約エラー (batch {start}): {e}", file=sys.stderr)
+        if start + batch_size < len(hn_articles):
+            time.sleep(1)
+    return results
 
 
 # --- Markdown ---
@@ -577,7 +582,7 @@ def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_ke
     for a in articles:
         title  = esc(a["title"])
         url    = a["url"]
-        date   = a.get("date", "")[:7]
+        date   = a.get("date", "")[5:10]
         count  = a["meta"].get(count_key, 0)
         author = esc(a["meta"].get("author", ""))
         ts     = tag_span(a.get("tag", "other"))
@@ -603,7 +608,7 @@ def render_hn(articles: list[dict]) -> list[str]:
         hn_url   = a["meta"].get("hn_url", "")
         pts      = a["meta"].get("points", 0)
         cmts     = a["meta"].get("comments", 0)
-        date     = a.get("date", "")[:7]
+        date     = a.get("date", "")[5:10]
         ts       = tag_span(a.get("tag", "other"))
         meta_parts = [p for p in [date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
         lines += [
@@ -714,6 +719,15 @@ def main():
     out_path = OUTPUT_DIR / f"{timestamp}-neta-trend.md"
     out_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"保存: {out_path}")
+
+    # Slack通知用URLをファイルに書き出す
+    date_path = now.strftime("%Y/%m/%d")
+    time_slug = now.strftime("%H-%M")
+    page_url = f"https://canon-so8.github.io/trend-news/daily/{date_path}/{time_slug}-neta-trend/"
+    try:
+        Path("/tmp/daily_url.txt").write_text(page_url)
+    except Exception:
+        pass
     return str(out_path)
 
 

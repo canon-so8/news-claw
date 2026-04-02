@@ -277,7 +277,7 @@ def main():
         lines += [
             f'<div class="paper" data-tags="{data_tags}">',
             f'<p><strong><a href="{arxiv_url}">{p["title"]}</a></strong></p>',
-            f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date} · {p["first_author"]}{github_link}</p>',
+            f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date[5:]} · {p["first_author"]}{github_link}</p>',
             details_block,
             "</div>",
             "",
@@ -290,6 +290,15 @@ def main():
     out_path = OUTPUT_DIR / f"{timestamp}-neta-trend-hf.md"
     out_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"保存: {out_path}")
+
+    # Slack通知用URLをファイルに書き出す
+    date_path = now.strftime("%Y/%m/%d")
+    time_slug = now.strftime("%H-%M")
+    page_url = f"https://canon-so8.github.io/trend-news/arxiv/{date_path}/{time_slug}-neta-trend-hf/"
+    try:
+        Path("/tmp/hf_url.txt").write_text(page_url)
+    except Exception:
+        pass
     return str(out_path)
 
 
