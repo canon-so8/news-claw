@@ -340,14 +340,29 @@ def collect_zenn() -> list[dict]:
 
 
 def collect_qiita() -> list[dict]:
-    """Qiita API v2: タグ別に直近7日のいいね数が多い記事を取得"""
+    """Qiita: popular-items/feed (Atom) からトレンド記事を取得"""
     seen: set[str] = set()
     articles: list[dict] = []
+
+    # トレンドフィード（https://qiita.com/trend 相当）
+    r = get("https://qiita.com/popular-items/feed")
+    if r:
+        for item in parse_rss(r.content):
+            if item["url"] and item["url"] not in seen:
+                seen.add(item["url"])
+                item["tag"] = classify_tag(item["title"], item["desc"])
+                if "likes" not in item["meta"]:
+                    item["meta"]["likes"] = 0
+                if "author" not in item["meta"]:
+                    item["meta"]["author"] = ""
+                articles.append(item)
+
+    # タグ別でトレンドに載らない専門記事も補完
     since = (datetime.now(JST) - timedelta(days=7)).strftime("%Y-%m-%d")
 
     def fetch_tag(tag: str) -> list[dict]:
         encoded = urllib.parse.quote(tag)
-        url = f"https://qiita.com/api/v2/items?per_page=20&query=tag:{encoded}+created:>={since}+stocks:>3"
+        url = f"https://qiita.com/api/v2/items?per_page=15&query=tag:{encoded}+created:>={since}+stocks:>3"
         r = get(url)
         if not r:
             return []
@@ -359,6 +374,7 @@ def collect_qiita() -> list[dict]:
                 result.append({
                     "title": title, "url": art_url,
                     "date": (it.get("created_at") or "")[:10], "desc": "",
+                    "tag": classify_tag(title),
                     "meta": {
                         "likes": it.get("likes_count", 0) or 0,
                         "author": (it.get("user") or {}).get("id", ""),
@@ -366,30 +382,11 @@ def collect_qiita() -> list[dict]:
                 })
         return result
 
-    # 全体トレンド（直近7日・ストック数多め）
-    r = get(f"https://qiita.com/api/v2/items?per_page=20&query=created:>={since}+stocks:>5")
-    if r:
-        for it in r.json():
-            art_url = it.get("url", "")
-            title = it.get("title", "")
-            if title and art_url and art_url not in seen:
-                seen.add(art_url)
-                articles.append({
-                    "title": title, "url": art_url,
-                    "date": (it.get("created_at") or "")[:10], "desc": "",
-                    "tag": classify_tag(title),
-                    "meta": {
-                        "likes": it.get("likes_count", 0) or 0,
-                        "author": (it.get("user") or {}).get("id", ""),
-                    },
-                })
-
     with ThreadPoolExecutor(max_workers=5) as ex:
         for items in ex.map(fetch_tag, QIITA_TAGS):
             for item in items:
                 if item["url"] not in seen:
                     seen.add(item["url"])
-                    item["tag"] = classify_tag(item["title"])
                     articles.append(item)
 
     articles.sort(key=lambda a: a["meta"].get("likes", 0), reverse=True)
@@ -397,9 +394,10 @@ def collect_qiita() -> list[dict]:
 
 
 def collect_hatena() -> list[dict]:
-    """はてなブックマーク RSS/RDF: bookmarkcount 付きで取得"""
+    """はてなブックマーク: IT人気エントリー + キーワード検索RSS"""
     urls = [
         "https://b.hatena.ne.jp/hotentry/it.rss",
+        # サブカテゴリRSSは廃止済みのためキーワード検索RSSで代替
         "https://b.hatena.ne.jp/q/AI?date_range=1w&sort=hot&mode=rss&safe=on&target=entry&users=3",
         "https://b.hatena.ne.jp/q/%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92?date_range=1w&sort=hot&mode=rss&safe=on&target=entry&users=3",
         "https://b.hatena.ne.jp/q/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0?date_range=1w&sort=hot&mode=rss&safe=on&target=entry&users=3",
@@ -621,6 +619,23 @@ def main():
     nikkei_articles = recent(nikkei_articles)
     print(f"  日付フィルタ後 → Zenn: {len(zenn_articles)}(フィルタなし), Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, 日経: {len(nikkei_articles)}")
+
+    # --- タブ間の重複排除（先のタブを優先）---
+    global_seen: set[str] = set()
+    def dedup(arts: list[dict]) -> list[dict]:
+        result = []
+        for a in arts:
+            if a["url"] not in global_seen:
+                global_seen.add(a["url"])
+                result.append(a)
+        return result
+    zenn_articles   = dedup(zenn_articles)
+    qiita_articles  = dedup(qiita_articles)
+    hatena_articles = dedup(hatena_articles)
+    nikkei_articles = dedup(nikkei_articles)
+    hn_articles     = dedup(hn_articles)
+    print(f"  重複排除後 → Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
+          f"はてな: {len(hatena_articles)}, 日経: {len(nikkei_articles)}, HN: {len(hn_articles)}")
 
     lines: list[str] = [
         "---",
