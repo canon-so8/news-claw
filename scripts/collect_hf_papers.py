@@ -7,7 +7,6 @@ import json
 import re
 import sys
 import time
-import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -87,24 +86,6 @@ def assign_tags(paper: dict) -> list[str]:
     return tags or ["other"]
 
 
-def translate_ja(text: str) -> str:
-    """Google Translate 非公式 API でテキストを日本語に翻訳"""
-    if not text:
-        return ""
-    url = (
-        "https://translate.googleapis.com/translate_a/single"
-        f"?client=gtx&sl=en&tl=ja&dt=t&q={urllib.parse.quote(text[:500])}"
-    )
-    try:
-        s = _make_session()
-        r = s.get(url, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        return "".join(chunk[0] for chunk in data[0] if chunk[0])
-    except Exception:
-        return ""
-
-
 def _make_session() -> requests.Session:
     session = requests.Session()
     retry = Retry(total=3, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504])
@@ -182,10 +163,7 @@ def main():
     for p in filtered:
         p["tags"] = assign_tags(p)
 
-    print(f"  Google Translateでアブスト翻訳中... ({len(filtered)}件)")
-    for p in filtered:
-        p["summary_ja"] = translate_ja(p["summary"])
-        time.sleep(0.2)
+    print(f"フィルタ・タグ付け完了")
 
     # Markdown生成
     timestamp = now.strftime("%Y-%m-%d-%H-%M")
@@ -222,12 +200,10 @@ def main():
         hf_date = p.get("hf_date", "")
 
         summary_en = p["summary"].replace("\n", " ").strip()
-        summary_ja = p.get("summary_ja", "")
 
         details_block = (
             '<details>'
-            '<summary>要約を見る</summary>'
-            + (f'<p>{summary_ja}</p>' if summary_ja else '')
+            '<summary>Abstract</summary>'
             + f'<p class="abstract">{summary_en}</p>'
             + '</details>'
         )

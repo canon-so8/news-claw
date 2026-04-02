@@ -514,7 +514,7 @@ def render_hn(articles: list[dict]) -> list[str]:
         if title_ja:
             lines += [
                 "  <details>",
-                f'    <summary>要約を見る</summary>',
+                f'    <summary>タイトルの日本語訳</summary>',
                 f'    <p>{title_ja}</p>',
                 "  </details>",
             ]
