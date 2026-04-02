@@ -116,7 +116,7 @@ def fetch_papers(date_str: str) -> list[dict]:
 
 
 def gemini_summarize_papers(papers: list[dict], api_key: str) -> dict[int, str]:
-    """HF論文のアブストを日本語で要約。{index: summary_ja} を返す"""
+    """HF論文のアブストを日本語で要約。10件ずつバッチ処理。{index: summary_ja} を返す"""
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
@@ -124,31 +124,39 @@ def gemini_summarize_papers(papers: list[dict], api_key: str) -> dict[int, str]:
         print("  google-genai未インストール。スキップ。", file=sys.stderr)
         return {}
 
-    titles_json = json.dumps(
-        [{"id": i, "title": p["title"], "abstract": p["summary"][:400]}
-         for i, p in enumerate(papers)],
-        ensure_ascii=False,
-    )
-    prompt = f"""以下のAI/ML論文について、各論文を日本語で3文以内で要約してください。
-「何を提案/解決しているか → どんな手法か → 何が得られたか」の順で書いてください。
+    results: dict[int, str] = {}
+    batch_size = 10
+    for start in range(0, len(papers), batch_size):
+        batch = papers[start:start + batch_size]
+        batch_json = json.dumps(
+            [{"id": start + i, "title": p["title"], "abstract": p["summary"][:300]}
+             for i, p in enumerate(batch)],
+            ensure_ascii=False,
+        )
+        prompt = f"""あなたはAI/ML論文の日本語解説者です。
+以下の論文を**必ず日本語**で、各論文2〜3文で要約してください。
+「何を提案しているか → どんな手法か → 何が得られたか」の順で書いてください。
+英語で回答しないでください。
 
-JSON配列のみ返してください（説明不要）:
-[{{"id": 0, "summary_ja": "〜〜"}}, ...]
+JSONのみ返してください:
+[{{"id": {start}, "summary_ja": "日本語の要約"}}, ...]
 
 論文:
-{titles_json}"""
-
-    try:
-        resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        text = resp.text.strip()
-        m = re.search(r'\[.*\]', text, re.DOTALL)
-        if m:
-            text = m.group()
-        result = json.loads(text)
-        return {item["id"]: item["summary_ja"] for item in result if item.get("summary_ja")}
-    except Exception as e:
-        print(f"  Gemini 論文要約エラー: {e}", file=sys.stderr)
-        return {}
+{batch_json}"""
+        try:
+            resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+            text = resp.text.strip()
+            m = re.search(r'\[.*\]', text, re.DOTALL)
+            if m:
+                text = m.group()
+            for item in json.loads(text):
+                if item.get("summary_ja"):
+                    results[item["id"]] = item["summary_ja"]
+        except Exception as e:
+            print(f"  Gemini 論文要約エラー (batch {start}): {e}", file=sys.stderr)
+        if start + batch_size < len(papers):
+            time.sleep(1)
+    return results
 
 
 def main():

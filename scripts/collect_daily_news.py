@@ -448,44 +448,47 @@ def _gemini_client(api_key: str):
 
 
 def gemini_classify_tags(articles: list[dict], api_key: str) -> dict[int, str]:
-    """全記事タイトルをGeminiで一括タグ分類。{index: tag} を返す"""
+    """全記事タイトルをGeminiで20件ずつバッチタグ分類。{index: tag} を返す"""
     client = _gemini_client(api_key)
     if not client:
         return {}
 
     VALID = {"ai", "ml", "cv", "poem", "eco", "dev", "other"}
-    titles_json = json.dumps(
-        [{"id": i, "title": a["title"]} for i, a in enumerate(articles)],
-        ensure_ascii=False,
+    TAG_DEF = (
+        "ai: AI・LLM・Agent・ClaudeCode・生成AI・ChatGPT・プロンプト・RAG / "
+        "ml: 機械学習・深層学習・強化学習・統計・Kaggle・PyTorch・音声認識 / "
+        "cv: 画像認識・動画・物体検出・3D・diffusion・自動運転 / "
+        "poem: キャリア・エンジニア哲学・転職・組織論・働き方 / "
+        "eco: 経済・産業・半導体・テック企業・スタートアップ・規制 / "
+        "dev: プログラミング・開発ツール・セキュリティ・インフラ・クラウド・OSS / "
+        "other: 上記以外"
     )
-    prompt = f"""以下の記事タイトルに最も適切なカテゴリを1つ割り当ててください。
-
-カテゴリ:
-- ai: AI・LLM・大規模言語モデル・Agent・ClaudeCode・生成AI・ChatGPT・プロンプト・RAG
-- ml: 機械学習・深層学習・強化学習・統計・Kaggle・音声認識・Transformer・PyTorch・TensorFlow
-- cv: 画像認識・動画・コンピュータビジョン・物体検出・3D・YOLO・diffusion・自動運転
-- poem: キャリア・エンジニア哲学・思想・転職・組織論・技術エッセイ・働き方
-- eco: 経済・産業・半導体・テック企業・スタートアップ・規制・Apple・Google・NVIDIA・Microsoft
-- dev: プログラミング・開発ツール・セキュリティ・データベース・インフラ・クラウド・OSS
-- other: 上記に当てはまらないもの
-
-JSON配列のみ返してください（説明不要）:
-[{{"id": 0, "tag": "ai"}}, {{"id": 1, "tag": "ml"}}, ...]
-
-タイトル:
-{titles_json}"""
-
-    try:
-        resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        text = resp.text.strip()
-        m = re.search(r'\[.*\]', text, re.DOTALL)
-        if m:
-            text = m.group()
-        result = json.loads(text)
-        return {item["id"]: item["tag"] for item in result if item.get("tag") in VALID}
-    except Exception as e:
-        print(f"  Gemini tag分類エラー: {e}", file=sys.stderr)
-        return {}
+    results: dict[int, str] = {}
+    batch_size = 20
+    for start in range(0, len(articles), batch_size):
+        batch = articles[start:start + batch_size]
+        batch_json = json.dumps(
+            [{"id": start + i, "title": a["title"]} for i, a in enumerate(batch)],
+            ensure_ascii=False,
+        )
+        prompt = f"""以下の記事タイトルに最適なカテゴリを1つ割り当てJSONのみ返してください。
+カテゴリ定義: {TAG_DEF}
+出力形式: [{{"id": {start}, "tag": "ai"}}, ...]
+タイトル: {batch_json}"""
+        try:
+            resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+            text = resp.text.strip()
+            m = re.search(r'\[.*\]', text, re.DOTALL)
+            if m:
+                text = m.group()
+            for item in json.loads(text):
+                if item.get("tag") in VALID:
+                    results[item["id"]] = item["tag"]
+        except Exception as e:
+            print(f"  Gemini tag分類エラー (batch {start}): {e}", file=sys.stderr)
+        if start + batch_size < len(articles):
+            time.sleep(1)
+    return results
 
 
 def gemini_hn_summaries(hn_articles: list[dict], api_key: str) -> dict[int, str]:
@@ -499,12 +502,13 @@ def gemini_hn_summaries(hn_articles: list[dict], api_key: str) -> dict[int, str]
          for i, a in enumerate(hn_articles)],
         ensure_ascii=False,
     )
-    prompt = f"""Hacker Newsで話題の記事タイトルから、各記事の日本語要約を書いてください。
+    prompt = f"""あなたは日本語のテックニュース解説者です。
+Hacker Newsで話題の記事を**必ず日本語**で、各記事2〜3文で要約してください。
+「何についての記事か → なぜHNで注目されているか」の順で書いてください。
+英語で回答しないでください。
 
-各記事について2〜3文で：「何についての記事か → なぜHNで注目されているか」
-
-JSON配列のみ返してください:
-[{{"id": 0, "summary": "〜〜"}}, ...]
+JSONのみ返してください:
+[{{"id": 0, "summary": "日本語の要約"}}, ...]
 
 タイトル:
 {titles_json}"""
@@ -642,6 +646,19 @@ def main():
 
     print(f"  Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, HN: {len(hn_articles)}, 日経: {len(nikkei_articles)}")
+
+    # --- 3日以内の記事に絞る ---
+    cutoff = (now - timedelta(days=3)).strftime("%Y-%m-%d")
+    def recent(arts: list[dict], min_count: int = 5) -> list[dict]:
+        """date が cutoff 以降の記事のみ残す。日付なし記事は保持。少なすぎる場合は全件返す。"""
+        filtered = [a for a in arts if not a.get("date") or a["date"][:10] >= cutoff]
+        return filtered if len(filtered) >= min_count else arts
+    zenn_articles   = recent(zenn_articles)
+    qiita_articles  = recent(qiita_articles)
+    hatena_articles = recent(hatena_articles)
+    nikkei_articles = recent(nikkei_articles)
+    print(f"  3日フィルタ後 → Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
+          f"はてな: {len(hatena_articles)}, 日経: {len(nikkei_articles)}")
 
     # --- Gemini によるタグ分類 + HN要約 ---
     gemini_key = os.environ.get("GEMINI_API_TOKEN", "")
