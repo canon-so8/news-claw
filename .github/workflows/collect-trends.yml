@@ -41,12 +41,14 @@ jobs:
         if: steps.holiday.outputs.skip != 'true'
         env:
           DEEPL_AUTH_KEY: ${{ secrets.DEEPL_AUTH_KEY }}
+          DEEPL_ENABLED: "true"
         run: python scripts/collect_hf_papers.py
 
       - name: Collect Daily News
         if: steps.holiday.outputs.skip != 'true'
         env:
           DEEPL_AUTH_KEY: ${{ secrets.DEEPL_AUTH_KEY }}
+          DEEPL_ENABLED: "true"
         run: python scripts/collect_daily_news.py
 
       - name: Commit and push
