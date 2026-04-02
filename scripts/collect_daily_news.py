@@ -220,14 +220,22 @@ def parse_rss(data: bytes) -> list[dict]:
 DEEPL_AUTH_KEY = os.environ.get("DEEPL_AUTH_KEY", "")
 
 
+DEEPL_API_URL = (
+    "https://api-free.deepl.com/v2/translate"
+    if DEEPL_AUTH_KEY.endswith(":fx")
+    else "https://api.deepl.com/v2/translate"
+)
+
+
 def translate_deepl(text: str) -> str:
-    """DeepL API Free で英語→日本語翻訳"""
+    """DeepL API で英語→日本語翻訳（Free/Pro自動判定）"""
     if not DEEPL_AUTH_KEY or not text:
         return ""
     try:
         resp = SESSION.post(
-            "https://api-free.deepl.com/v2/translate",
-            data={"auth_key": DEEPL_AUTH_KEY, "text": text[:1500], "target_lang": "JA"},
+            DEEPL_API_URL,
+            headers={"Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}"},
+            data={"text": text[:1500], "target_lang": "JA"},
             timeout=15,
         )
         if resp.status_code == 200:

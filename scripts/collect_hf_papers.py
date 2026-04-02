@@ -91,14 +91,22 @@ def assign_tags(paper: dict) -> list[str]:
 DEEPL_AUTH_KEY = os.environ.get("DEEPL_AUTH_KEY", "")
 
 
+DEEPL_API_URL = (
+    "https://api-free.deepl.com/v2/translate"
+    if DEEPL_AUTH_KEY.endswith(":fx")
+    else "https://api.deepl.com/v2/translate"
+)
+
+
 def translate_deepl(text: str) -> str:
-    """DeepL API Free で英語→日本語翻訳"""
+    """DeepL API で英語→日本語翻訳（Free/Pro自動判定）"""
     if not DEEPL_AUTH_KEY or not text:
         return ""
     try:
         resp = requests.post(
-            "https://api-free.deepl.com/v2/translate",
-            data={"auth_key": DEEPL_AUTH_KEY, "text": text[:1500], "target_lang": "JA"},
+            DEEPL_API_URL,
+            headers={"Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}"},
+            data={"text": text[:1500], "target_lang": "JA"},
             timeout=15,
         )
         if resp.status_code == 200:
@@ -212,7 +220,11 @@ def main():
         p["tags"] = assign_tags(p)
 
     # DeepL/Google Translateでアブスト翻訳
-    print(f"  アブスト翻訳中... ({len(filtered)}件, DeepL={'有効' if DEEPL_AUTH_KEY else '未設定'})")
+    if DEEPL_AUTH_KEY:
+        endpoint = "api-free" if DEEPL_AUTH_KEY.endswith(":fx") else "api (Pro)"
+        print(f"  アブスト翻訳中... ({len(filtered)}件, DeepL={endpoint}, key=...{DEEPL_AUTH_KEY[-6:]})")
+    else:
+        print(f"  アブスト翻訳中... ({len(filtered)}件, Google Translate)")
     for p in filtered:
         p["summary_ja"] = translate_ja(p["summary"])
         time.sleep(0.3)
