@@ -752,7 +752,7 @@ def main():
     # Slack通知用URLをファイルに書き出す
     date_path = now.strftime("%Y/%m/%d")
     time_slug = now.strftime("%H-%M")
-    page_url = f"https://canon-so8.github.io/trend-news/daily/{date_path}/{time_slug}-neta-trend/"
+    page_url = f"https://canon-so8.github.io/news-claw/daily/{date_path}/{time_slug}-neta-trend/"
     try:
         Path("/tmp/daily_url.txt").write_text(page_url)
     except Exception:
