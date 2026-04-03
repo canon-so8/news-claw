@@ -135,11 +135,17 @@ def tag_span(tag_key: str) -> str:
 
 
 # --- HTTP セッション ---
+QIITA_TOKEN = os.environ.get("QIITA_TOKEN", "")
+
+
 def _session() -> requests.Session:
     s = requests.Session()
     retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     s.mount("https://", HTTPAdapter(max_retries=retry))
-    s.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"})
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+    if QIITA_TOKEN:
+        headers["Authorization"] = f"Bearer {QIITA_TOKEN}"
+    s.headers.update(headers)
     return s
 
 SESSION = _session()
