@@ -8,7 +8,6 @@ import os
 import re
 import sys
 import time
-import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -136,29 +135,9 @@ def translate_deepl(text: str) -> str:
     return ""
 
 
-def translate_google(text: str) -> str:
-    """Google Translate 非公式 API（フォールバック用）"""
-    if not text:
-        return ""
-    url = (
-        "https://translate.googleapis.com/translate_a/single"
-        f"?client=gtx&sl=en&tl=ja&dt=t&q={urllib.parse.quote(text[:500])}"
-    )
-    try:
-        r = requests.get(url, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        return "".join(chunk[0] for chunk in data[0] if chunk[0])
-    except Exception:
-        return ""
-
-
 def translate_ja(text: str) -> str:
-    """DeepL優先、フォールバックでGoogle Translate"""
-    result = translate_deepl(text)
-    if result:
-        return result
-    return translate_google(text)
+    """DeepL で翻訳（無効時・失敗時は空文字）"""
+    return translate_deepl(text)
 
 
 def _make_session() -> requests.Session:

@@ -257,30 +257,9 @@ def translate_deepl(text: str) -> str:
     return ""
 
 
-def translate_google(text: str) -> str:
-    """Google Translate 非公式 API（フォールバック用）"""
-    if not text:
-        return ""
-    url = (
-        "https://translate.googleapis.com/translate_a/single"
-        f"?client=gtx&sl=en&tl=ja&dt=t&q={urllib.parse.quote(text)}"
-    )
-    r = get(url, timeout=10)
-    if not r:
-        return ""
-    try:
-        data = r.json()
-        return "".join(chunk[0] for chunk in data[0] if chunk[0])
-    except Exception:
-        return ""
-
-
 def translate_ja(text: str) -> str:
-    """DeepL優先、フォールバックでGoogle Translate"""
-    result = translate_deepl(text)
-    if result:
-        return result
-    return translate_google(text)
+    """DeepL で翻訳（無効時・失敗時は空文字）"""
+    return translate_deepl(text)
 
 
 # --- 各ソース収集 ---
