@@ -47,25 +47,34 @@ ATOM   = "http://www.w3.org/2005/Atom"
 RDF    = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 HATENA = "http://www.hatena.ne.jp/info/xmlns#"
 
-# --- タグ判定（優先順位: LLM > AI > ML > CV > POEM > ECO > DEV > DEV(fallback)）---
+# --- タグ判定（優先順位: LLM > AGENT > AI > ML > CV > POEM > ECO > GIT > PKG > DEV > DEV(fallback)）---
 LLM_KEYWORDS  = [
     "claude ", "claude\u300c", "claude\u300d",  # Claude (Anthropic)
-    "gpt-4", "gpt-5", "gpt-4o", "chatgpt", "openai",
+    "gpt-4", "gpt-5", "gpt-4o", "chatgpt", "openai","codex",
     "gemini ", "gemini-", "bard",
     "llama", "mistral", "phi-", "qwen", "deepseek",
     "llm", "大規模言語モデル", "言語モデル",
     "anthropic", "claude code", "notebooklm",
     "rag ", "ファインチューニング", "fine-tun", "alignment",
-    "chain-of-thought", "プロンプトエンジニアリング",
+    "chain-of-thought", "プロンプトエンジニアリング","ハーネスエンジニアリング","mcp",
+    "駆動開発"
+]
+AGENT_KEYWORDS = [
+    "ai agent", "agentic", "multi-agent", "マルチエージェント",
+    "aiエージェント", "llmエージェント", "自律エージェント",
+    "tool use", "tool calling", "function calling",
+    "langgraph", "langchain", "crewai", "autogen", "dspy", "smolagents",
+    "computer use", "browser use",
+    "workflow automation", "オーケストレーション",
 ]
 AI_KEYWORDS   = [
-    "生成ai", "ai agent", "agentic", "mcp ", "ai coding", "aiネイティブ", "ai駆動",
+    "生成ai", "aiネイティブ", "ai駆動",
     "人工知能", "生成モデル", "画像生成ai", "動画生成ai",
     "ai活用", "aiを活用", "aiで", "aiが", "ai搭載", "aiツール",
     "aiアシスタント", "aiサービス", "ai開発", "ai導入",
 ]
 # copilot/cursor/agentは文脈で分かれるため、AI専用キーワードと組み合わせて判定
-AI_COMBO_KEYWORDS = ["copilot", "cursor ", "agent"]  # 他のAIキーワードと共起でAI判定
+AI_COMBO_KEYWORDS = ["copilot", "cursor "]  # agentはAGENT_KEYWORDSで処理
 ML_KEYWORDS   = [
     "machine learning", "deep learning", "reinforcement learning", "pytorch", "tensorflow",
     "kaggle", "neural network", "transformer", "bert", "llama", "optimizer",
@@ -77,7 +86,7 @@ ML_KEYWORDS   = [
     "特徴抽出", "埋め込みモデル", "テキスト埋め込み", "ベイズ", "tabnet",
     "分散並列", "並列学習", "コンペ", "モデル学習", "自然言語処理",
     "音声認識", "音声合成", "音声処理", "音響", "asr", "tts", "speech recognition",
-    "speech synthesis", "音声モデル",
+    "speech synthesis", "音声モデル","kaggle"
 ]
 CV_KEYWORDS   = [
     "image", "video", "vision", "diffusion", "gan", "vae", "3d reconstruction",
@@ -92,7 +101,7 @@ POEM_KEYWORDS = [
     "リーダーシップ", "マネジメント論",
     "エンジニアとして", "技術者として", "プログラマとして",
     "未経験から", "未経験でも", "新人エンジニア",
-    "折れない", "後悔しない", "成長するため",
+    "折れない", "後悔しない", "成長するため","考えてみる"
 ]
 ECO_KEYWORDS  = [
     "経済", "半導体", "nvidia", "tsmc", "テック企業", "産業動向", "規制",
@@ -100,49 +109,67 @@ ECO_KEYWORDS  = [
     "ipo", "資金調達", "市場規模", "シェア", "競合", "買収", "合併",
     "apple", "google", "microsoft", "meta ", "amazon", "tesla",
 ]
+GIT_KEYWORDS  = [
+    "git ", "github", "gitlab", "gitflow", "git-",
+    "pull request", "プルリクエスト", "マージリクエスト",
+    "ブランチ戦略", "バージョン管理", "コード管理",
+    "github actions", "git hooks", "git submodule", "git rebase",
+]
+PKG_KEYWORDS  = [
+    "npm", "pip ", "yarn", "pnpm", "cargo ",
+    "pypi", "homebrew", "brew ",
+    "パッケージ", "依存関係", "ライブラリ更新", "パッケージ管理",
+    "package manager", "dependency", "poetry ", "uv ",
+    "requirements.txt", "package.json", "go.mod", "composer",
+]
 DEV_KEYWORDS  = [
     "python", "javascript", "typescript", "rust", "go ", "java ", "kotlin",
     "swift", "c++", "c#", "kubernetes", "docker", "linux", "cli", "sdk", "vscode",
     "ios開発", "android開発", "アプリ開発", "ios向け",
     "プログラミング", "コーディング", "ライブラリ", "フレームワーク",
-    "npm", "pip ", "パッケージ", "依存関係", "git ", "github",
     "デプロイ", "インフラ", "クラウド", "aws", "gcp", "azure",
     "セキュリティ", "脆弱性", "サプライチェーン", "暗号化", "認証",
     "データベース", "sql", "postgresql", "redis", "mongodb",
     "バグ", "テスト", "ci/cd", "コマンドライン", "ターミナル", "シェルスクリプト",
     "bash ", "zsh", "makefile", "api設計", "マイクロサービス", "サーバーレス",
     "全文検索", "uuid", "スキーマ", "orm ", "migration", "パフォーマンス",
-    "リファクタリング", "コードレビュー", "開発環境", "wsl", "homebrew",
+    "リファクタリング", "コードレビュー", "開発環境", "wsl",
     "ログ設計", "ログ収集", "監視", "オブザーバビリティ", "rest api", "restapi",
     "テーブル設計", "スキーマ設計", "hostsファイル", "crowdstrike",
     "ssh", "ssl", "tls", "xss", "csrf", "ペネトレーション",
 ]
 
 TAG_LABELS = {
-    "llm":   ("LLM",   "tag-llm"),
-    "ai":    ("AI",    "tag-ai"),
-    "ml":    ("ML",    "tag-ml"),
-    "cv":    ("CV",    "tag-cv"),
-    "poem":  ("ポエム", "tag-poem"),
-    "eco":   ("経済",  "tag-eco"),
-    "dev":   ("開発",  "tag-dev"),
-    "blog":  ("Blog",  "tag-blog"),
-    "other": ("Other", "tag-other"),
+    "llm":   ("LLM",    "tag-llm"),
+    "agent": ("Agent",  "tag-agent"),
+    "ai":    ("AI",     "tag-ai"),
+    "ml":    ("ML",     "tag-ml"),
+    "cv":    ("CV",     "tag-cv"),
+    "poem":  ("ポエム",  "tag-poem"),
+    "eco":   ("経済",   "tag-eco"),
+    "git":   ("Git",    "tag-git"),
+    "pkg":   ("パッケージ", "tag-pkg"),
+    "dev":   ("開発",   "tag-dev"),
+    "blog":  ("Blog",   "tag-blog"),
+    "other": ("Other",  "tag-other"),
 }
 
 
 def classify_tag(title: str, desc: str = "") -> str:
     text = (title + " " + desc).lower()
-    if any(k in text for k in LLM_KEYWORDS):  return "llm"
+    if any(k in text for k in LLM_KEYWORDS):    return "llm"
+    if any(k in text for k in AGENT_KEYWORDS):  return "agent"
     # AI: 直接キーワード or コンボキーワード（copilot等+AI文脈）
     has_ai_direct = any(k in text for k in AI_KEYWORDS)
     has_ai_combo  = any(k in text for k in AI_COMBO_KEYWORDS) and has_ai_direct
-    if has_ai_direct or has_ai_combo:          return "ai"
-    if any(k in text for k in ML_KEYWORDS):   return "ml"
-    if any(k in text for k in CV_KEYWORDS):   return "cv"
-    if any(k in text for k in POEM_KEYWORDS): return "poem"
-    if any(k in text for k in ECO_KEYWORDS):  return "eco"
-    if any(k in text for k in DEV_KEYWORDS):  return "dev"
+    if has_ai_direct or has_ai_combo:            return "ai"
+    if any(k in text for k in ML_KEYWORDS):     return "ml"
+    if any(k in text for k in CV_KEYWORDS):     return "cv"
+    if any(k in text for k in POEM_KEYWORDS):   return "poem"
+    if any(k in text for k in ECO_KEYWORDS):    return "eco"
+    if any(k in text for k in GIT_KEYWORDS):    return "git"
+    if any(k in text for k in PKG_KEYWORDS):    return "pkg"
+    if any(k in text for k in DEV_KEYWORDS):    return "dev"
     return "dev"  # 技術系メディアなので未分類はdevにフォールバック
 
 
@@ -539,8 +566,11 @@ def collect_hn() -> list[dict]:
 # --- Markdown ---
 CSS = """<style>
 .tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
-.tag-llm  { color: #c45200; background: #fdebd0; }
-.tag-ai   { color: #bf5a00; background: #fff3e0; }
+.tag-llm   { color: #c45200; background: #fdebd0; }
+.tag-agent { color: #2e7d32; background: #e8f5e9; }
+.tag-ai    { color: #bf5a00; background: #fff3e0; }
+.tag-git   { color: #37474f; background: #eceff1; }
+.tag-pkg   { color: #b71c1c; background: #ffebee; }
 .tag-ml   { color: #6a1b9a; background: #f3e5f5; }
 .tag-cv   { color: #1a6bbf; background: #e8f0fb; }
 .tag-poem { color: #c2185b; background: #fce4ec; }
