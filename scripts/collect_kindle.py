@@ -10,7 +10,14 @@ JST = timezone(timedelta(hours=9))
 REPO_ROOT = Path(__file__).parent.parent
 OUTPUT_DIR = REPO_ROOT / "_posts" / "kindle"
 
-KINDLE_DAILY_URL = "https://www.amazon.co.jp/kindle-dbs/browse/?widgetId=ebooks-deals-storefront_KindleDailyDealsStrategy"
+KINDLE_DAILY_URL = (
+    "https://www.amazon.co.jp/kindle-dbs/browse/"
+    "?_encoding=UTF8"
+    "&metadata=storeType%3Debooks"
+    "&widgetId=ebooks-deals-storefront_KindleDailyDealsStrategy"
+    "&title=Kindle%E6%97%A5%E6%9B%BF%E3%82%8F%E3%82%8A%E3%82%BB%E3%83%BC%E3%83%AB"
+    "&sourceType=recs"
+)
 
 CSS = """<style>
 .kindle-link-box {
