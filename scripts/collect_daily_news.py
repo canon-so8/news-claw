@@ -634,22 +634,22 @@ def collect_hn() -> list[dict]:
 # --- Markdown ---
 CSS = """<style>
 .tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
-.tag-agent { color: #fff; background: #00c853; }
-.tag-ai    { color: #fff; background: #ff6d00; }
-.tag-ml    { color: #fff; background: #aa00ff; }
-.tag-cv    { color: #fff; background: #2979ff; }
-.tag-research { color: #fff; background: #304ffe; }
-.tag-sec   { color: #fff; background: #ff1744; }
-.tag-poem  { color: #fff; background: #ff4081; }
-.tag-eco   { color: #333; background: #ffd600; }
-.tag-front { color: #fff; background: #00bcd4; }
+.tag-agent { color: #fff; background: #43a047; }
+.tag-ai    { color: #fff; background: #ef6c00; }
+.tag-ml    { color: #fff; background: #8e24aa; }
+.tag-cv    { color: #fff; background: #1e88e5; }
+.tag-research { color: #fff; background: #3949ab; }
+.tag-sec   { color: #fff; background: #e53935; }
+.tag-poem  { color: #fff; background: #ec407a; }
+.tag-eco   { color: #fff; background: #f9a825; }
+.tag-front { color: #fff; background: #00acc1; }
 .tag-back  { color: #fff; background: #8d6e63; }
-.tag-cloud { color: #fff; background: #0091ea; }
-.tag-lang  { color: #fff; background: #d500f9; }
+.tag-cloud { color: #fff; background: #039be5; }
+.tag-lang  { color: #fff; background: #ab47bc; }
 .tag-git   { color: #fff; background: #546e7a; }
-.tag-pkg   { color: #fff; background: #f50057; }
-.tag-oss   { color: #333; background: #76ff03; }
-.tag-dev   { color: #fff; background: #00bfa5; }
+.tag-pkg   { color: #fff; background: #d81b60; }
+.tag-oss   { color: #fff; background: #7cb342; }
+.tag-dev   { color: #fff; background: #26a69a; }
 .tab-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .tab-btn { padding: 6px 14px; border: none; border-radius: 20px; cursor: pointer;
   font-size: 0.85rem; font-weight: 700; background: #e8e8e8; color: #444; transition: background 0.15s; }
@@ -667,9 +667,9 @@ details { margin-top: 6px; }
 details summary { cursor: pointer; font-size: 0.82rem; color: #888; margin-top: 4px; }
 details blockquote { font-size: 0.85rem; line-height: 1.6; margin: 8px 0 0 0; padding: 8px 12px; color: #555; border-left: 3px solid #ddd; background: transparent; }
 .kindle-footer { margin-top: 2rem; padding: 1rem 0; border-top: 1px solid #eee; }
-.kindle-btn { display: inline-block; padding: 8px 20px; background: #ff9900 !important; color: #fff !important;
-  border: none; font-size: 0.85rem; font-weight: 700; border-radius: 4px; text-decoration: none !important; }
-.kindle-btn:hover { background: #e68a00 !important; }
+.kindle-btn { display: inline-block; padding: 8px 20px; background: #fff !important; color: #ff9900 !important;
+  border: 2px solid #ff9900; font-size: 0.85rem; font-weight: 700; border-radius: 4px; text-decoration: none !important; }
+.kindle-btn:hover { background: #fff8f0 !important; }
 </style>"""
 
 TAB_NAV = """<div class="tab-nav">
