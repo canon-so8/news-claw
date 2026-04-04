@@ -47,22 +47,22 @@ ATOM   = "http://www.w3.org/2005/Atom"
 RDF    = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 HATENA = "http://www.hatena.ne.jp/info/xmlns#"
 
-# --- タグ判定（優先順位: LLM > AGENT > AI > ML > CV > POEM > ECO > GIT > PKG > DEV > DEV(fallback)）---
-LLM_KEYWORDS  = [
-    "claude ", "claude\u300c", "claude\u300d",  # Claude (Anthropic)
-    "gpt-4", "gpt-5", "gpt-4o", "chatgpt", "openai","codex",
+# --- タグ判定（優先順位: AGENT > AI > ML > CV > POEM > ECO > CLOUD > LANG > GIT > PKG > DEV > DEV(fallback)）---
+AGENT_KEYWORDS = [
+    # LLM/モデル名
+    "claude ", "claude\u300c", "claude\u300d", "claude code",
+    "gpt-4", "gpt-5", "gpt-4o", "chatgpt", "openai", "codex",
     "gemini ", "gemini-", "bard",
     "llama", "mistral", "phi-", "qwen", "deepseek",
     "llm", "大規模言語モデル", "言語モデル",
-    "anthropic", "claude code", "notebooklm",
+    "anthropic", "notebooklm",
     "rag ", "ファインチューニング", "fine-tun", "alignment",
-    "chain-of-thought", "プロンプトエンジニアリング","ハーネスエンジニアリング","mcp",
-    "駆動開発"
-]
-AGENT_KEYWORDS = [
+    "chain-of-thought", "プロンプトエンジニアリング", "ハーネスエンジニアリング",
+    "駆動開発",
+    # エージェント
     "ai agent", "agentic", "multi-agent", "マルチエージェント",
     "aiエージェント", "llmエージェント", "自律エージェント",
-    "tool use", "tool calling", "function calling",
+    "mcp", "tool use", "tool calling", "function calling",
     "langgraph", "langchain", "crewai", "autogen", "dspy", "smolagents",
     "computer use", "browser use",
     "workflow automation", "オーケストレーション",
@@ -122,16 +122,26 @@ PKG_KEYWORDS  = [
     "package manager", "dependency", "poetry ", "uv ",
     "requirements.txt", "package.json", "go.mod", "composer",
 ]
+CLOUD_KEYWORDS = [
+    "aws", "gcp", "azure", "クラウド", "cloud",
+    "kubernetes", "k8s", "docker", "コンテナ",
+    "デプロイ", "インフラ", "terraform", "cloudflare",
+    "サーバーレス", "lambda", "cloud run", "fargate",
+    "マイクロサービス", "microservice",
+]
+LANG_KEYWORDS = [
+    "python", "javascript", "typescript", "rust", "go ", "golang",
+    "java ", "kotlin", "swift", "c++", "c#", "ruby", "elixir", "zig",
+    "haskell", "scala", "dart", "lua", "perl", "r言語",
+]
 DEV_KEYWORDS  = [
-    "python", "javascript", "typescript", "rust", "go ", "java ", "kotlin",
-    "swift", "c++", "c#", "kubernetes", "docker", "linux", "cli", "sdk", "vscode",
+    "linux", "cli", "sdk", "vscode",
     "ios開発", "android開発", "アプリ開発", "ios向け",
     "プログラミング", "コーディング", "ライブラリ", "フレームワーク",
-    "デプロイ", "インフラ", "クラウド", "aws", "gcp", "azure",
     "セキュリティ", "脆弱性", "サプライチェーン", "暗号化", "認証",
     "データベース", "sql", "postgresql", "redis", "mongodb",
     "バグ", "テスト", "ci/cd", "コマンドライン", "ターミナル", "シェルスクリプト",
-    "bash ", "zsh", "makefile", "api設計", "マイクロサービス", "サーバーレス",
+    "bash ", "zsh", "makefile", "api設計",
     "全文検索", "uuid", "スキーマ", "orm ", "migration", "パフォーマンス",
     "リファクタリング", "コードレビュー", "開発環境", "wsl",
     "ログ設計", "ログ収集", "監視", "オブザーバビリティ", "rest api", "restapi",
@@ -140,23 +150,23 @@ DEV_KEYWORDS  = [
 ]
 
 TAG_LABELS = {
-    "llm":   ("LLM",    "tag-llm"),
-    "agent": ("Agent",  "tag-agent"),
-    "ai":    ("AI",     "tag-ai"),
-    "ml":    ("ML",     "tag-ml"),
-    "cv":    ("CV",     "tag-cv"),
-    "poem":  ("ポエム",  "tag-poem"),
-    "eco":   ("経済",   "tag-eco"),
-    "git":   ("Git",    "tag-git"),
+    "agent": ("Agent",    "tag-agent"),
+    "ai":    ("AI",       "tag-ai"),
+    "ml":    ("機械学習",  "tag-ml"),
+    "cv":    ("画像",     "tag-cv"),
+    "poem":  ("ポエム",    "tag-poem"),
+    "eco":   ("経済",     "tag-eco"),
+    "cloud": ("クラウド",  "tag-cloud"),
+    "lang":  ("言語",     "tag-lang"),
+    "git":   ("Git",      "tag-git"),
     "pkg":   ("パッケージ", "tag-pkg"),
-    "dev":   ("開発",   "tag-dev"),
-    "other": ("Other",  "tag-other"),
+    "dev":   ("開発",     "tag-dev"),
+    "other": ("Other",    "tag-other"),
 }
 
 
 def classify_tag(title: str, desc: str = "") -> str:
     text = (title + " " + desc).lower()
-    if any(k in text for k in LLM_KEYWORDS):    return "llm"
     if any(k in text for k in AGENT_KEYWORDS):  return "agent"
     # AI: 直接キーワード or コンボキーワード（copilot等+AI文脈）
     has_ai_direct = any(k in text for k in AI_KEYWORDS)
@@ -166,6 +176,8 @@ def classify_tag(title: str, desc: str = "") -> str:
     if any(k in text for k in CV_KEYWORDS):     return "cv"
     if any(k in text for k in POEM_KEYWORDS):   return "poem"
     if any(k in text for k in ECO_KEYWORDS):    return "eco"
+    if any(k in text for k in CLOUD_KEYWORDS):  return "cloud"
+    if any(k in text for k in LANG_KEYWORDS):   return "lang"
     if any(k in text for k in GIT_KEYWORDS):    return "git"
     if any(k in text for k in PKG_KEYWORDS):    return "pkg"
     if any(k in text for k in DEV_KEYWORDS):    return "dev"
@@ -562,11 +574,12 @@ def collect_hn() -> list[dict]:
 # --- Markdown ---
 CSS = """<style>
 .tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
-.tag-llm   { color: #c45200; background: #fdebd0; }
 .tag-agent { color: #2e7d32; background: #e8f5e9; }
 .tag-ai    { color: #bf5a00; background: #fff3e0; }
 .tag-git   { color: #37474f; background: #eceff1; }
 .tag-pkg   { color: #b71c1c; background: #ffebee; }
+.tag-cloud { color: #0277bd; background: #e1f5fe; }
+.tag-lang  { color: #4527a0; background: #ede7f6; }
 .tag-ml   { color: #6a1b9a; background: #f3e5f5; }
 .tag-cv   { color: #1a6bbf; background: #e8f0fb; }
 .tag-poem { color: #c2185b; background: #fce4ec; }
