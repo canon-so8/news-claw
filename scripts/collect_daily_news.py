@@ -47,7 +47,7 @@ ATOM   = "http://www.w3.org/2005/Atom"
 RDF    = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 HATENA = "http://www.hatena.ne.jp/info/xmlns#"
 
-# --- タグ判定（優先順位: AGENT > AI > ML > CV > POEM > ECO > CLOUD > LANG > GIT > PKG > DEV > DEV(fallback)）---
+# --- タグ判定（複数タグ対応、全キーワードリストを走査してマッチしたタグを全て返す）---
 AGENT_KEYWORDS = [
     # LLM/モデル名
     "claude ", "claude\u300c", "claude\u300d", "claude code",
@@ -122,6 +122,14 @@ PKG_KEYWORDS  = [
     "package manager", "dependency", "poetry ", "uv ",
     "requirements.txt", "package.json", "go.mod", "composer",
 ]
+SEC_KEYWORDS  = [
+    "セキュリティ", "security", "脆弱性", "vulnerability", "cve-",
+    "サプライチェーン攻撃", "ゼロデイ", "zero-day", "マルウェア", "malware",
+    "暗号化", "encryption", "認証", "authentication", "oauth", "oidc",
+    "xss", "csrf", "sql injection", "ペネトレーション", "penetration",
+    "crowdstrike", "soc ", "siem", "ゼロトラスト", "zero trust",
+    "ssh", "ssl", "tls", "証明書", "certificate",
+]
 CLOUD_KEYWORDS = [
     "aws", "gcp", "azure", "クラウド", "cloud",
     "kubernetes", "k8s", "docker", "コンテナ",
@@ -138,55 +146,57 @@ DEV_KEYWORDS  = [
     "linux", "cli", "sdk", "vscode",
     "ios開発", "android開発", "アプリ開発", "ios向け",
     "プログラミング", "コーディング", "ライブラリ", "フレームワーク",
-    "セキュリティ", "脆弱性", "サプライチェーン", "暗号化", "認証",
     "データベース", "sql", "postgresql", "redis", "mongodb",
     "バグ", "テスト", "ci/cd", "コマンドライン", "ターミナル", "シェルスクリプト",
     "bash ", "zsh", "makefile", "api設計",
     "全文検索", "uuid", "スキーマ", "orm ", "migration", "パフォーマンス",
     "リファクタリング", "コードレビュー", "開発環境", "wsl",
     "ログ設計", "ログ収集", "監視", "オブザーバビリティ", "rest api", "restapi",
-    "テーブル設計", "スキーマ設計", "hostsファイル", "crowdstrike",
-    "ssh", "ssl", "tls", "xss", "csrf", "ペネトレーション",
+    "テーブル設計", "スキーマ設計", "hostsファイル",
 ]
 
-TAG_LABELS = {
-    "agent": ("Agent",    "tag-agent"),
-    "ai":    ("AI",       "tag-ai"),
-    "ml":    ("機械学習",  "tag-ml"),
-    "cv":    ("画像",     "tag-cv"),
-    "poem":  ("ポエム",    "tag-poem"),
-    "eco":   ("経済",     "tag-eco"),
-    "cloud": ("クラウド",  "tag-cloud"),
-    "lang":  ("言語",     "tag-lang"),
-    "git":   ("Git",      "tag-git"),
-    "pkg":   ("パッケージ", "tag-pkg"),
-    "dev":   ("開発",     "tag-dev"),
-    "other": ("Other",    "tag-other"),
-}
 
 
-def classify_tag(title: str, desc: str = "") -> str:
+
+
+_TAG_RULES: list[tuple[str, list[str]]] = [
+    ("agent", AGENT_KEYWORDS),
+    ("ai",    AI_KEYWORDS),
+    ("ml",    ML_KEYWORDS),
+    ("cv",    CV_KEYWORDS),
+    ("sec",   SEC_KEYWORDS),
+    ("poem",  POEM_KEYWORDS),
+    ("eco",   ECO_KEYWORDS),
+    ("cloud", CLOUD_KEYWORDS),
+    ("lang",  LANG_KEYWORDS),
+    ("git",   GIT_KEYWORDS),
+    ("pkg",   PKG_KEYWORDS),
+    ("dev",   DEV_KEYWORDS),
+]
+
+
+def classify_tags(title: str, desc: str = "") -> list[str]:
+    """タイトル+説明文からマッチする全タグを返す（複数タグ対応）"""
     text = (title + " " + desc).lower()
-    if any(k in text for k in AGENT_KEYWORDS):  return "agent"
-    # AI: 直接キーワード or コンボキーワード（copilot等+AI文脈）
-    has_ai_direct = any(k in text for k in AI_KEYWORDS)
-    has_ai_combo  = any(k in text for k in AI_COMBO_KEYWORDS) and has_ai_direct
-    if has_ai_direct or has_ai_combo:            return "ai"
-    if any(k in text for k in ML_KEYWORDS):     return "ml"
-    if any(k in text for k in CV_KEYWORDS):     return "cv"
-    if any(k in text for k in POEM_KEYWORDS):   return "poem"
-    if any(k in text for k in ECO_KEYWORDS):    return "eco"
-    if any(k in text for k in CLOUD_KEYWORDS):  return "cloud"
-    if any(k in text for k in LANG_KEYWORDS):   return "lang"
-    if any(k in text for k in GIT_KEYWORDS):    return "git"
-    if any(k in text for k in PKG_KEYWORDS):    return "pkg"
-    if any(k in text for k in DEV_KEYWORDS):    return "dev"
-    return "dev"  # 技術系メディアなので未分類はdevにフォールバック
+    tags: list[str] = []
+    for tag_key, keywords in _TAG_RULES:
+        if tag_key == "ai":
+            has_direct = any(k in text for k in AI_KEYWORDS)
+            has_combo  = any(k in text for k in AI_COMBO_KEYWORDS) and has_direct
+            if has_direct or has_combo:
+                tags.append("ai")
+        elif any(k in text for k in keywords):
+            tags.append(tag_key)
+    return tags or ["dev"]  # 未分類はdevにフォールバック
 
 
-def tag_span(tag_key: str) -> str:
-    label, cls = TAG_LABELS.get(tag_key, ("Other", "tag-other"))
-    return f'<span class="tag {cls}">{label}</span>'
+def tag_spans(tag_keys: list[str]) -> str:
+    """複数タグをスパンHTML文字列に変換"""
+    parts = []
+    for k in tag_keys:
+        label, cls = TAG_LABELS.get(k, ("Other", "tag-other"))
+        parts.append(f'<span class="tag {cls}">{label}</span>')
+    return " ".join(parts)
 
 
 # --- HTTP セッション ---
@@ -396,7 +406,7 @@ def collect_zenn() -> list[dict]:
     # いいね数降順でソート・タグ付け
     articles.sort(key=lambda a: a["meta"].get("likes", 0), reverse=True)
     for a in articles:
-        a["tag"] = classify_tag(a["title"])
+        a["tags"] = classify_tags(a["title"])
     return articles[:50]
 
 
@@ -413,7 +423,7 @@ def collect_qiita() -> list[dict]:
             item["url"] = _strip_utm(item["url"])
             if item["url"] and item["url"] not in seen:
                 seen.add(item["url"])
-                item["tag"] = classify_tag(item["title"], item["desc"])
+                item["tags"] = classify_tags(item["title"], item["desc"])
                 item["meta"].setdefault("likes", 0)
                 item["meta"].setdefault("author", "")
                 trend_articles.append(item)
@@ -448,7 +458,7 @@ def collect_qiita() -> list[dict]:
                 result.append({
                     "title": title, "url": art_url,
                     "date": (it.get("created_at") or "")[:10], "desc": "",
-                    "tag": classify_tag(title),
+                    "tags": classify_tags(title),
                     "meta": {
                         "likes": it.get("likes_count", 0) or 0,
                         "author": (it.get("user") or {}).get("id", ""),
@@ -490,7 +500,7 @@ def collect_hatena() -> list[dict]:
             for item in items:
                 if item["url"] not in seen:
                     seen.add(item["url"])
-                    item["tag"] = classify_tag(item["title"], item["desc"])
+                    item["tags"] = classify_tags(item["title"], item["desc"])
                     articles.append(item)
 
     articles.sort(key=lambda a: a["meta"].get("bookmarks", 0), reverse=True)
@@ -518,7 +528,7 @@ def collect_hatena_blog() -> list[dict]:
             for item in items:
                 if item["url"] not in seen:
                     seen.add(item["url"])
-                    item["tag"] = classify_tag(item["title"], item["desc"])
+                    item["tags"] = classify_tags(item["title"], item["desc"])
                     articles.append(item)
 
     articles.sort(key=lambda a: a["meta"].get("bookmarks", 0), reverse=True)
@@ -549,7 +559,7 @@ def collect_hn() -> list[dict]:
             "url": story_url,
             "date": (h.get("created_at") or "")[:10],
             "desc": "",
-            "tag": classify_tag(title),
+            "tags": classify_tags(title),
             "meta": {
                 "points": h.get("points", 0),
                 "comments": h.get("num_comments", 0),
@@ -578,6 +588,7 @@ CSS = """<style>
 .tag-ai    { color: #bf5a00; background: #fff3e0; }
 .tag-git   { color: #37474f; background: #eceff1; }
 .tag-pkg   { color: #b71c1c; background: #ffebee; }
+.tag-sec   { color: #d32f2f; background: #ffebee; }
 .tag-cloud { color: #0277bd; background: #e1f5fe; }
 .tag-lang  { color: #4527a0; background: #ede7f6; }
 .tag-ml   { color: #6a1b9a; background: #f3e5f5; }
@@ -675,7 +686,7 @@ def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_ke
         date   = a.get("date", "")[5:10]
         count  = a["meta"].get(count_key, 0)
         author = esc(a["meta"].get("author", ""))
-        ts     = tag_span(a.get("tag", "other"))
+        ts     = tag_spans(a.get("tags", ["dev"]))
         count_str  = f"{count_icon} {count}" if (count_icon and count) else ""
         author_str = f"@{author}" if author else ""
         meta_parts = [p for p in [date, count_str, author_str] if p] + [ts]
@@ -701,7 +712,7 @@ def render_hn(articles: list[dict]) -> list[str]:
         pts      = a["meta"].get("points", 0)
         cmts     = a["meta"].get("comments", 0)
         date     = a.get("date", "")[5:10]
-        ts       = tag_span(a.get("tag", "other"))
+        ts       = tag_spans(a.get("tags", ["dev"]))
         meta_parts = [p for p in [date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
         lines += [
             f'<div class="item" data-date="{a.get("date","")}" data-count="{pts}">',
