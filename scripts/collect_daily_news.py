@@ -546,8 +546,7 @@ CSS = """<style>
 .tab-btn { padding: 6px 14px; border: none; border-radius: 20px; cursor: pointer;
   font-size: 0.85rem; font-weight: 700; background: #e8e8e8; color: #444; transition: background 0.15s; }
 .tab-btn.active { background: #333; color: #fff; }
-.sort-bar { display: flex; gap: 5px; align-items: center; margin-bottom: 1rem; }
-.sort-bar span { font-size: 0.75rem; color: #aaa; }
+.sort-bar { display: flex; gap: 5px; margin-bottom: 1rem; }
 .sort-btn { padding: 3px 11px; border: 1px solid #ccc; border-radius: 20px; cursor: pointer;
   font-size: 0.75rem; font-weight: 700; background: #fff; color: #666; transition: all 0.15s; }
 .sort-btn.active { background: #333; color: #fff; border-color: #333; }
@@ -570,7 +569,6 @@ TAB_NAV = """<div class="tab-nav">
   <button class="tab-btn" onclick="switchTab('hn',this)">HN</button>
 </div>
 <div class="sort-bar">
-  <span>並び順:</span>
   <button class="sort-btn active" onclick="setSort('latest',this)">Latest</button>
   <button class="sort-btn" onclick="setSort('hotness',this)">Hotness</button>
 </div>"""
