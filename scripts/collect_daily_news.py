@@ -510,7 +510,6 @@ def collect_nikkei() -> list[dict]:
     cutoff = (datetime.now(JST) - timedelta(days=3)).strftime("%Y-%m-%d")
     urls = [
         "https://xtech.nikkei.com/rss/index.rdf",
-        "https://www.nikkei.com/news/category/rss/technology/",
     ]
     seen: set[str] = set()
     articles: list[dict] = []
