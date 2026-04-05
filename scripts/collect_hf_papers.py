@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -276,7 +277,11 @@ def main():
         summary_ja = escape(p.get("summary_ja", ""))
         title_esc = escape(p["title"])
         author_esc = escape(p["first_author"])
-        github_link_html = f' · <a href="{escape(p["github_repo"], quote=True)}">GitHub</a>' if p["github_repo"] else ""
+        github_repo_url = p["github_repo"] or ""
+        if github_repo_url and urlparse(github_repo_url).scheme in ("http", "https"):
+            github_link_html = f' · <a href="{escape(github_repo_url, quote=True)}">GitHub</a>'
+        else:
+            github_link_html = ""
 
         detail_lines = [
             f'<div class="paper" data-tags="{data_tags}">',

@@ -752,6 +752,14 @@ def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def safe_href(url: str) -> str:
+    """URLスキームを検証し、http/https以外は '#' に置換してXSSを防止"""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return "#"
+    return esc(url)
+
+
 def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_key: str) -> list[str]:
     active = " active" if tab_id == "zenn" else ""
     # デフォルト: 最新順
@@ -759,7 +767,7 @@ def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_ke
     lines = [f'<div id="tab-{tab_id}" class="tab-pane{active}">']
     for a in sorted_articles:
         title  = esc(a["title"])
-        url    = a["url"]
+        url    = safe_href(a["url"])
         date   = a.get("date", "")[5:10]
         count  = a["meta"].get(count_key, 0)
         author = esc(a["meta"].get("author", ""))
@@ -784,8 +792,8 @@ def render_hn(articles: list[dict]) -> list[str]:
     for a in sorted_articles:
         title    = esc(a["title"])
         title_ja = esc(a["meta"].get("title_ja", ""))
-        url      = a["url"]
-        hn_url   = a["meta"].get("hn_url", "")
+        url      = safe_href(a["url"])
+        hn_url   = safe_href(a["meta"].get("hn_url", ""))
         pts      = a["meta"].get("points", 0)
         cmts     = a["meta"].get("comments", 0)
         date     = a.get("date", "")[5:10]
