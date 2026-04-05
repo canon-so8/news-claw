@@ -13,5 +13,8 @@ permalink: /:categories/:year/:month/:day/:title/
 future: true
 timezone: Asia/Tokyo
 
+exclude:
+  - docs/
+
 minima:
   skin: dark
