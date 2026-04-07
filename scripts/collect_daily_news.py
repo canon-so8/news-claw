@@ -791,7 +791,8 @@ def safe_href(url: str) -> str:
     return esc(url)
 
 
-def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_key: str) -> list[str]:
+def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_key: str,
+                    source_url: str = "") -> list[str]:
     active = " active" if tab_id == "zenn" else ""
     # デフォルト: 最新順
     sorted_articles = sorted(articles, key=lambda a: a.get("date", ""), reverse=True)
@@ -812,6 +813,8 @@ def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_ke
             f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
             "</div>",
         ]
+    if source_url:
+        lines.append(f'<div class="item-meta" style="margin-top:12px;">引用: <a href="{safe_href(source_url)}" target="_blank" rel="noopener">{esc(source_url)}</a></div>')
     lines.append("</div>")
     return lines
 
@@ -931,7 +934,8 @@ def main():
     lines += [""]
     lines += render_hn(hn_articles)
     lines += [""]
-    lines += render_standard(slides_articles, "slides", "", "")
+    lines += render_standard(slides_articles, "slides", "", "",
+                             source_url="https://yuji.software/tech_slideshare/")
     lines += [
         "",
         f'<div class="kindle-footer"><a class="kindle-btn" href="{KINDLE_DAILY_URL}" target="_blank" rel="noopener">Kindle 日替わりセール</a></div>',
