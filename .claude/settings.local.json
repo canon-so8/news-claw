@@ -7,7 +7,14 @@
       "WebFetch(domain:www.nikkei.com)",
       "WebFetch(domain:xtech.nikkei.com)",
       "WebFetch(domain:arxiv.org)",
-      "Bash(powershell -Command \"[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId\\([DateTime]::UtcNow, 'Tokyo Standard Time'\\).ToString\\('yyyy-MM-dd HH:mm'\\)\")"
+      "Bash(powershell -Command \"[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId\\([DateTime]::UtcNow, 'Tokyo Standard Time'\\).ToString\\('yyyy-MM-dd HH:mm'\\)\")",
+      "Bash(gh run:*)",
+      "Bash(gh api:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m 'テスト: スケジュールを5分毎に変更して発火確認:*)",
+      "Bash(git push:*)",
+      "Bash(gh variable:*)",
+      "Bash(C:/Users/USER228/.venvs/ideacon/Scripts/python.exe scripts/collect_daily_news.py)"
     ]
   }
 }
