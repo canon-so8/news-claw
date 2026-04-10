@@ -697,22 +697,33 @@ def collect_github_trending() -> list[dict]:
         return []
     articles = []
     for item in parse_rss(r.content):
-        # descriptionからスター数を抽出（例: "スター数: 8,803 (+686)"）
+        raw_title = item.get("title", "")
         desc = item.get("desc", "")
+        # タイトルを「リポ名 - 説明」に分割
+        parts = raw_title.split(" - ", 1)
+        repo_name = parts[0].strip()
+        repo_desc = parts[1].strip() if len(parts) > 1 else ""
+        # descriptionからスター数を抽出（例: "スター数: 8,803 (+686)"）
         stars = 0
         m = re.search(r'スター数[:：]\s*([\d,]+)', desc)
         if not m:
             m = re.search(r'⭐\s*([\d,]+)', desc)
         if m:
             stars = int(m.group(1).replace(",", ""))
+        # descriptionから言語を抽出（例: "言語: Python<br>"）
+        lang = ""
+        m_lang = re.search(r'言語[:：]\s*([^<\s]+)', desc)
+        if m_lang:
+            lang = m_lang.group(1)
         articles.append({
-            "title": item["title"],
+            "title": repo_name,
             "url": item["url"],
             "date": item.get("date", ""),
-            "desc": desc,
-            "tags": classify_tags(item["title"], desc),
+            "desc": repo_desc,
+            "tags": classify_tags(raw_title, desc),
             "meta": {
                 "stars": stars,
+                "lang": lang,
             },
         })
     articles.sort(key=lambda a: a["meta"].get("stars", 0), reverse=True)
@@ -890,6 +901,35 @@ def render_hn(articles: list[dict]) -> list[str]:
     return lines
 
 
+def render_ghtrend(articles: list[dict], source_url: str = "") -> list[str]:
+    """GitHub Trending専用レンダラー: リポ名リンク + 説明文 + スター数 + 言語"""
+    lines = ['<div id="tab-ghtrend" class="tab-pane">']
+    for a in articles:
+        repo   = esc(a["title"])
+        url    = safe_href(a["url"])
+        desc   = esc(a.get("desc", ""))
+        date   = a.get("date", "")[5:10]
+        stars  = a["meta"].get("stars", 0)
+        lang   = esc(a["meta"].get("lang", ""))
+        ts     = tag_spans(a.get("tags", ["dev"]))
+        stars_str = f"⭐ {stars:,}" if stars else ""
+        meta_parts = [p for p in [date, stars_str, lang] if p] + [ts]
+        lines += [
+            f'<div class="item" data-date="{a.get("date","")}" data-count="{stars}">',
+            f'  <div class="item-title"><a href="{url}">{repo}</a></div>',
+        ]
+        if desc:
+            lines.append(f'  <div class="item-meta">{desc}</div>')
+        lines += [
+            f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
+            "</div>",
+        ]
+    if source_url:
+        lines.append(f'<div class="item-meta" style="margin-top:12px;">引用: <a href="{safe_href(source_url)}" target="_blank" rel="noopener">{esc(source_url)}</a></div>')
+    lines.append("</div>")
+    return lines
+
+
 def main():
     now = datetime.now(JST)
     date_label = now.strftime("%Y-%m-%d")
@@ -984,8 +1024,8 @@ def main():
     lines += render_standard(slides_articles, "slides", "", "",
                              source_url="https://yuji.software/tech_slideshare/")
     lines += [""]
-    lines += render_standard(ghtrend_articles, "ghtrend", "⭐", "stars",
-                             source_url="https://github-trending-ja.yashikota.com/")
+    lines += render_ghtrend(ghtrend_articles,
+                            source_url="https://github-trending-ja.yashikota.com/")
     lines += [
         "",
         f'<div class="kindle-footer"><a class="kindle-btn" href="{KINDLE_DAILY_URL}" target="_blank" rel="noopener">Kindle 日替わりセール</a></div>',
