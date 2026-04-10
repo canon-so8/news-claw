@@ -15,7 +15,8 @@
       "Bash(git push:*)",
       "Bash(gh variable:*)",
       "Bash(C:/Users/USER228/.venvs/ideacon/Scripts/python.exe scripts/collect_daily_news.py)",
-      "Bash(cat C:/Users/USER228/Desktop/ClaudeCode_DIR/news-claw/.github/workflows/*.yml)"
+      "Bash(cat C:/Users/USER228/Desktop/ClaudeCode_DIR/news-claw/.github/workflows/*.yml)",
+      "WebFetch(domain:canon-so8.github.io)"
     ]
   }
 }
