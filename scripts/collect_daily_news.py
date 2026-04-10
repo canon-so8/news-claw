@@ -259,6 +259,7 @@ ALLOWED_DOMAINS = {
     "hn.algolia.com", "news.ycombinator.com",
     "api-free.deepl.com", "api.deepl.com",
     "yuji.software",
+    "yashikota.github.io",
 }
 
 
@@ -683,6 +684,36 @@ def collect_slides() -> list[dict]:
     return articles
 
 
+def collect_github_trending() -> list[dict]:
+    """GitHub Trending 日本語まとめ: RSS Feed からトレンドリポジトリを収集"""
+    url = "https://yashikota.github.io/github-trending-ja/feed.xml"
+    r = get(url)
+    if not r:
+        return []
+    articles = []
+    for item in parse_rss(r.content):
+        # descriptionからスター数を抽出（例: "スター数: 8,803 (+686)"）
+        desc = item.get("desc", "")
+        stars = 0
+        m = re.search(r'スター数[:：]\s*([\d,]+)', desc)
+        if not m:
+            m = re.search(r'⭐\s*([\d,]+)', desc)
+        if m:
+            stars = int(m.group(1).replace(",", ""))
+        articles.append({
+            "title": item["title"],
+            "url": item["url"],
+            "date": item.get("date", ""),
+            "desc": desc,
+            "tags": classify_tags(item["title"], desc),
+            "meta": {
+                "stars": stars,
+            },
+        })
+    articles.sort(key=lambda a: a["meta"].get("stars", 0), reverse=True)
+    return articles
+
+
 # --- Markdown ---
 CSS = """<style>
 .tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
@@ -734,6 +765,7 @@ TAB_NAV = """<div class="tab-nav">
   <button class="tab-btn" onclick="switchTab('blog',this)">Blog</button>
   <button class="tab-btn" onclick="switchTab('hn',this)">HN</button>
   <button class="tab-btn" onclick="switchTab('slides',this)">Slides</button>
+  <button class="tab-btn" onclick="switchTab('ghtrend',this)">GH Trending</button>
 </div>
 <div class="sort-bar">
   <button class="sort-btn active" onclick="setSort('latest',this)">Latest</button>
@@ -767,7 +799,7 @@ function switchTab(id, btn) {
   pane.classList.add('active');
   btn.classList.add('active');
   const sortBar = document.querySelector('.sort-bar');
-  if (id === 'slides') { sortBar.style.display = 'none'; }
+  if (id === 'slides' || id === 'ghtrend') { sortBar.style.display = 'none'; }
   else { sortBar.style.display = ''; sortPane(pane, _sort); }
 }
 </script>"""
@@ -861,24 +893,27 @@ def main():
 
     print("収集開始...")
 
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        f_zenn   = ex.submit(collect_zenn)
-        f_qiita  = ex.submit(collect_qiita)
-        f_hatena = ex.submit(collect_hatena)
-        f_blog   = ex.submit(collect_hatena_blog)
-        f_hn     = ex.submit(collect_hn)
-        f_slides = ex.submit(collect_slides)
+    with ThreadPoolExecutor(max_workers=7) as ex:
+        f_zenn     = ex.submit(collect_zenn)
+        f_qiita    = ex.submit(collect_qiita)
+        f_hatena   = ex.submit(collect_hatena)
+        f_blog     = ex.submit(collect_hatena_blog)
+        f_hn       = ex.submit(collect_hn)
+        f_slides   = ex.submit(collect_slides)
+        f_ghtrend  = ex.submit(collect_github_trending)
 
-    zenn_articles   = f_zenn.result()
-    qiita_articles  = f_qiita.result()
-    hatena_articles = f_hatena.result()
-    blog_articles   = f_blog.result()
-    hn_articles     = f_hn.result()
-    slides_articles = f_slides.result()
+    zenn_articles    = f_zenn.result()
+    qiita_articles   = f_qiita.result()
+    hatena_articles  = f_hatena.result()
+    blog_articles    = f_blog.result()
+    hn_articles      = f_hn.result()
+    slides_articles  = f_slides.result()
+    ghtrend_articles = f_ghtrend.result()
 
     print(f"  Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, "
-          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}")
+          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}, "
+          f"GH Trending: {len(ghtrend_articles)}")
 
     # --- 日付フィルタ（Zennはトレンドなのでフィルタなし、他は14日）---
     cutoff = (now - timedelta(days=14)).strftime("%Y-%m-%d")
@@ -890,8 +925,10 @@ def main():
     hatena_articles = recent(hatena_articles)
     slides_articles = recent(slides_articles)
     # blogは1ヶ月の検索RSSなのでフィルタ不要
+    # GH Trendingは当日のトレンドなのでフィルタ不要
     print(f"  日付フィルタ後 → Zenn: {len(zenn_articles)}(フィルタなし), Qiita: {len(qiita_articles)}, "
-          f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, Slides: {len(slides_articles)}")
+          f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, "
+          f"Slides: {len(slides_articles)}, GH Trending: {len(ghtrend_articles)}")
 
     # --- タブ間の重複排除（先のタブを優先、UTMパラメータ除去して比較）---
     global_seen: set[str] = set()
@@ -908,10 +945,12 @@ def main():
     hatena_articles = dedup(hatena_articles)
     blog_articles   = dedup(blog_articles)
     hn_articles     = dedup(hn_articles)
-    slides_articles = dedup(slides_articles)
+    slides_articles  = dedup(slides_articles)
+    ghtrend_articles = dedup(ghtrend_articles)
     print(f"  重複排除後 → Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, "
-          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}")
+          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}, "
+          f"GH Trending: {len(ghtrend_articles)}")
 
     lines: list[str] = [
         "---",
@@ -939,6 +978,9 @@ def main():
     lines += [""]
     lines += render_standard(slides_articles, "slides", "", "",
                              source_url="https://yuji.software/tech_slideshare/")
+    lines += [""]
+    lines += render_standard(ghtrend_articles, "ghtrend", "⭐", "stars",
+                             source_url="https://github-trending-ja.yashikota.com/")
     lines += [
         "",
         f'<div class="kindle-footer"><a class="kindle-btn" href="{KINDLE_DAILY_URL}" target="_blank" rel="noopener">Kindle 日替わりセール</a></div>',
