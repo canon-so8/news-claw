@@ -275,7 +275,8 @@ def _session() -> requests.Session:
     s = requests.Session()
     retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     s.mount("https://", HTTPAdapter(max_retries=retry))
-    headers = {"User-Agent": "news-claw/1.0 (+https://github.com/canon-so8/news-claw)"}
+    repo_url = os.environ.get("REPO_URL", "https://github.com/news-claw")
+    headers = {"User-Agent": f"news-claw/1.0 (+{repo_url})"}
     if QIITA_TOKEN:
         headers["Authorization"] = f"Bearer {QIITA_TOKEN}"
     s.headers.update(headers)

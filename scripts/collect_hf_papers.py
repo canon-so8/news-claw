@@ -147,7 +147,7 @@ def _make_session() -> requests.Session:
     retry = Retry(total=3, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504])
     session.mount("https://", HTTPAdapter(max_retries=retry))
     session.headers.update({
-        "User-Agent": "news-claw/1.0 (+https://github.com/canon-so8/news-claw)",
+        "User-Agent": f"news-claw/1.0 (+{os.environ.get('REPO_URL', 'https://github.com/news-claw')})",
         "Accept": "application/json",
     })
     return session

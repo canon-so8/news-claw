@@ -43,6 +43,7 @@ jobs:
         env:
           DEEPL_AUTH_KEY: ${{ secrets.DEEPL_AUTH_KEY }}
           DEEPL_ENABLED: ${{ vars.DEEPL_ENABLED }}
+          REPO_URL: https://github.com/${{ github.repository }}
         run: python scripts/collect_hf_papers.py
 
       - name: Collect Daily News
@@ -51,6 +52,7 @@ jobs:
           DEEPL_AUTH_KEY: ${{ secrets.DEEPL_AUTH_KEY }}
           DEEPL_ENABLED: ${{ vars.DEEPL_ENABLED }}
           QIITA_TOKEN: ${{ secrets.QIITA_TOKEN }}
+          REPO_URL: https://github.com/${{ github.repository }}
         run: python scripts/collect_daily_news.py
 
       - name: Commit and push
