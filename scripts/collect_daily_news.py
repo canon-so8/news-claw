@@ -611,11 +611,12 @@ def collect_hatena_blog() -> list[dict]:
 
 def collect_hn() -> list[dict]:
     """Algolia API でHacker Newsの記事を収集（当日のみ）"""
-    # pts>=100 かつ直近24時間以内の記事のみ
     since_ts = int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp())
+    # points は numericAttributesForFiltering から除外されたため、
+    # created_at_i のみでフィルタし、Python側で points>=100 を適用
     url = (
         "https://hn.algolia.com/api/v1/search"
-        f"?tags=story&numericFilters=points%3E%3D100%2Ccreated_at_i%3E{since_ts}&hitsPerPage=30"
+        f"?tags=story&numericFilters=created_at_i%3E{since_ts}&hitsPerPage=50"
         "&attributesToRetrieve=title,url,points,num_comments,created_at,objectID"
     )
     r = get(url)
@@ -623,6 +624,8 @@ def collect_hn() -> list[dict]:
         return []
     articles = []
     for h in r.json().get("hits", []):
+        if (h.get("points") or 0) < 100:
+            continue
         title = h.get("title", "")
         story_url = h.get("url", "")
         if not title or not story_url:
