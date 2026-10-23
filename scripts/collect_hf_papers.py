@@ -117,9 +117,9 @@ def translate_gemini(text: str) -> str:
                 parts = candidates[0].get("content", {}).get("parts", [])
                 if parts:
                     return parts[0].get("text", "").strip()
-        print(f"  Gemini HTTP {resp.status_code}: {resp.text[:200]}", file=sys.stderr)
+        print(f"  [WARN] Gemini HTTP {resp.status_code}: {resp.text[:300]}")
     except Exception as e:
-        print(f"  Gemini error: {e}", file=sys.stderr)
+        print(f"  [WARN] Gemini error: {e}")
     return ""
 
 
@@ -208,9 +208,14 @@ def main():
     # Geminiでアブスト翻訳
     if GEMINI_API_KEY:
         print(f"  アブスト翻訳中... ({len(filtered)}件, Gemini {GEMINI_MODEL})")
-        for p in filtered:
+        print(f"  API URL: {GEMINI_URL}")
+        translated_count = 0
+        for i, p in enumerate(filtered):
             p["summary_ja"] = translate_ja(p["summary"])
+            if p["summary_ja"]:
+                translated_count += 1
             time.sleep(1)
+        print(f"  翻訳完了: {translated_count}/{len(filtered)} 件成功")
     else:
         print(f"  翻訳スキップ（GEMINI_API_KEY未設定）")
         for p in filtered:
