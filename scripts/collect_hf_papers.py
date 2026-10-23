@@ -95,31 +95,39 @@ GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_M
 
 
 def translate_gemini(text: str) -> str:
-    """Gemini API で英語→日本語翻訳"""
+    """Gemini API で英語→日本語翻訳（429/503時はリトライ）"""
     if not GEMINI_API_KEY or not text:
         return ""
     truncated = text[:1500]
-    try:
-        resp = requests.post(
-            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-            json={
-                "contents": [{"parts": [{"text":
-                    f"Translate the following English academic abstract into natural Japanese. "
-                    f"Output only the translation, no explanation.\n\n{truncated}"
-                }]}],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
-            },
-            timeout=30,
-        )
-        if resp.status_code == 200:
-            candidates = resp.json().get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts:
-                    return parts[0].get("text", "").strip()
-        print(f"  [WARN] Gemini HTTP {resp.status_code}: {resp.text[:300]}")
-    except Exception as e:
-        print(f"  [WARN] Gemini error: {e}")
+    payload = {
+        "contents": [{"parts": [{"text":
+            f"Translate the following English academic abstract into natural Japanese. "
+            f"Output only the translation, no explanation.\n\n{truncated}"
+        }]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+    }
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+                json=payload,
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                candidates = resp.json().get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        return parts[0].get("text", "").strip()
+            if resp.status_code in (429, 503) and attempt < 2:
+                wait = (attempt + 1) * 15
+                print(f"  [RETRY] HTTP {resp.status_code}, {wait}秒待機...")
+                time.sleep(wait)
+                continue
+            print(f"  [WARN] Gemini HTTP {resp.status_code}: {resp.text[:300]}")
+        except Exception as e:
+            print(f"  [WARN] Gemini error: {e}")
+        break
     return ""
 
 
@@ -214,7 +222,8 @@ def main():
             p["summary_ja"] = translate_ja(p["summary"])
             if p["summary_ja"]:
                 translated_count += 1
-            time.sleep(1)
+            if i < len(filtered) - 1:
+                time.sleep(15)
         print(f"  翻訳完了: {translated_count}/{len(filtered)} 件成功")
     else:
         print(f"  翻訳スキップ（GEMINI_API_KEY未設定）")
