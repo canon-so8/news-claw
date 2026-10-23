@@ -94,33 +94,41 @@ GEMINI_MODEL = "gemini-3.8-flash"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
-def translate_gemini(text: str) -> str:
-    """Gemini API で英語→日本語翻訳（429/503時はリトライ）"""
-    if not GEMINI_API_KEY or not text:
-        return ""
-    truncated = text[:1500]
+def translate_batch_gemini(papers: list[dict]) -> dict[str, str]:
+    """全abstractを1回のAPI呼び出しでまとめて翻訳"""
+    if not GEMINI_API_KEY or not papers:
+        return {}
+    numbered = []
+    for i, p in enumerate(papers):
+        text = (p.get("summary") or "")[:800]
+        if text:
+            numbered.append(f"[{i}] {text}")
+    if not numbered:
+        return {}
+    prompt = (
+        "Translate each numbered academic abstract below into natural Japanese. "
+        "Keep the [N] prefix for each. Output only translations, no explanation.\n\n"
+        + "\n\n".join(numbered)
+    )
     payload = {
-        "contents": [{"parts": [{"text":
-            f"Translate the following English academic abstract into natural Japanese. "
-            f"Output only the translation, no explanation.\n\n{truncated}"
-        }]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192},
     }
     for attempt in range(3):
         try:
             resp = requests.post(
                 f"{GEMINI_URL}?key={GEMINI_API_KEY}",
                 json=payload,
-                timeout=30,
+                timeout=120,
             )
             if resp.status_code == 200:
                 candidates = resp.json().get("candidates", [])
                 if candidates:
                     parts = candidates[0].get("content", {}).get("parts", [])
                     if parts:
-                        return parts[0].get("text", "").strip()
+                        return _parse_batch_result(parts[0].get("text", ""), len(papers))
             if resp.status_code in (429, 503) and attempt < 2:
-                wait = (attempt + 1) * 15
+                wait = (attempt + 1) * 30
                 print(f"  [RETRY] HTTP {resp.status_code}, {wait}秒待機...")
                 time.sleep(wait)
                 continue
@@ -128,12 +136,33 @@ def translate_gemini(text: str) -> str:
         except Exception as e:
             print(f"  [WARN] Gemini error: {e}")
         break
-    return ""
+    return {}
 
 
-def translate_ja(text: str) -> str:
-    """Gemini で翻訳（無効時・失敗時は空文字）"""
-    return translate_gemini(text)
+def _parse_batch_result(text: str, count: int) -> dict[str, str]:
+    """バッチ翻訳結果を [N] プレフィックスでパースして {index: translation} に変換"""
+    result: dict[str, str] = {}
+    current_idx = None
+    current_lines: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("[") and "]" in stripped:
+            bracket_end = stripped.index("]")
+            try:
+                idx = int(stripped[1:bracket_end])
+            except ValueError:
+                if current_idx is not None:
+                    current_lines.append(line)
+                continue
+            if current_idx is not None:
+                result[str(current_idx)] = "\n".join(current_lines).strip()
+            current_idx = idx
+            current_lines = [stripped[bracket_end + 1:].strip()]
+        elif current_idx is not None:
+            current_lines.append(stripped)
+    if current_idx is not None:
+        result[str(current_idx)] = "\n".join(current_lines).strip()
+    return result
 
 
 def _make_session() -> requests.Session:
@@ -213,17 +242,15 @@ def main():
     for p in filtered:
         p["tags"] = assign_tags(p)
 
-    # Geminiでアブスト翻訳
+    # Geminiでアブスト一括翻訳
     if GEMINI_API_KEY:
-        print(f"  アブスト翻訳中... ({len(filtered)}件, Gemini {GEMINI_MODEL})")
-        print(f"  API URL: {GEMINI_URL}")
+        print(f"  アブスト一括翻訳中... ({len(filtered)}件, Gemini {GEMINI_MODEL})")
+        translations = translate_batch_gemini(filtered)
         translated_count = 0
         for i, p in enumerate(filtered):
-            p["summary_ja"] = translate_ja(p["summary"])
+            p["summary_ja"] = translations.get(str(i), "")
             if p["summary_ja"]:
                 translated_count += 1
-            if i < len(filtered) - 1:
-                time.sleep(15)
         print(f"  翻訳完了: {translated_count}/{len(filtered)} 件成功")
     else:
         print(f"  翻訳スキップ（GEMINI_API_KEY未設定）")
@@ -267,13 +294,13 @@ def main():
         author_esc = escape(p["first_author"])
         github_repo_url = p["github_repo"] or ""
         if github_repo_url and urlparse(github_repo_url).scheme in ("http", "https"):
-            github_link_html = f' · <a href="{escape(github_repo_url, quote=True)}">GitHub</a>'
+            github_link_html = f' · <a href="{escape(github_repo_url, quote=True)}" target="_blank" rel="noopener">GitHub</a>'
         else:
             github_link_html = ""
 
         detail_lines = [
             f'<div class="paper" data-tags="{data_tags}">',
-            f'<p><strong><a href="{arxiv_url}">{title_esc}</a></strong></p>',
+            f'<p><strong><a href="{arxiv_url}" target="_blank" rel="noopener">{title_esc}</a></strong></p>',
             f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date[5:]} · {author_esc}{github_link_html}</p>',
         ]
         if summary_ja:

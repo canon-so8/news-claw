@@ -879,7 +879,7 @@ def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_ke
         meta_parts = [p for p in [date, count_str, author_str] if p] + [ts]
         lines += [
             f'<div class="item" data-date="{a.get("date","")}" data-count="{count}">',
-            f'  <div class="item-title"><a href="{url}">{title}</a></div>',
+            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
             f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
             "</div>",
         ]
@@ -903,7 +903,7 @@ def render_hn(articles: list[dict]) -> list[str]:
         meta_parts = [p for p in [date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
         lines += [
             f'<div class="item" data-date="{a.get("date","")}" data-count="{pts}">',
-            f'  <div class="item-title"><a href="{url}">{title}</a></div>',
+            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
             f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
         ]
         if title_ja:
@@ -933,7 +933,7 @@ def render_ghtrend(articles: list[dict]) -> list[str]:
         meta_parts = [p for p in [date, stars_str, lang] if p] + [ts]
         lines += [
             f'<div class="item" data-date="{a.get("date","")}" data-count="{stars}">',
-            f'  <div class="item-title"><a href="{url}">{repo}</a></div>',
+            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{repo}</a></div>',
         ]
         if desc:
             lines.append(f'  <div class="item-meta" style="color:#333;font-size:0.88rem;">{desc}</div>')
