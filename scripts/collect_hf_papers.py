@@ -89,57 +89,43 @@ def assign_tags(paper: dict) -> list[str]:
     return tags or ["other"]
 
 
-DEEPL_AUTH_KEY = os.environ.get("DEEPL_AUTH_KEY", "")
-DEEPL_ENABLED = os.environ.get("DEEPL_ENABLED", "false").lower() == "true"
-DEEPL_API_BASE = (
-    "https://api-free.deepl.com"
-    if DEEPL_AUTH_KEY.endswith(":fx")
-    else "https://api.deepl.com"
-)
-DEEPL_MONTHLY_LIMIT = 450_000  # この文字数を超えたら翻訳スキップ
-deepl_chars_used = 0  # 今回の実行での消費文字数
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
-def _deepl_monthly_usage() -> int:
-    """DeepL APIの今月の使用量を取得"""
-    try:
-        resp = requests.get(
-            f"{DEEPL_API_BASE}/v2/usage",
-            headers={"Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            return resp.json().get("character_count", 0)
-    except Exception:
-        pass
-    return 0
-
-
-def translate_deepl(text: str) -> str:
-    """DeepL API で英語→日本語翻訳（月間閾値超過時はスキップ）"""
-    global deepl_chars_used
-    if not DEEPL_AUTH_KEY or not DEEPL_ENABLED or not text:
+def translate_gemini(text: str) -> str:
+    """Gemini API で英語→日本語翻訳"""
+    if not GEMINI_API_KEY or not text:
         return ""
-    truncated = text[:500]
+    truncated = text[:1500]
     try:
         resp = requests.post(
-            f"{DEEPL_API_BASE}/v2/translate",
-            headers={"Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}"},
-            data={"text": truncated, "target_lang": "JA"},
-            timeout=15,
+            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+            json={
+                "contents": [{"parts": [{"text":
+                    f"Translate the following English academic abstract into natural Japanese. "
+                    f"Output only the translation, no explanation.\n\n{truncated}"
+                }]}],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+            },
+            timeout=30,
         )
         if resp.status_code == 200:
-            deepl_chars_used += len(truncated)
-            return resp.json()["translations"][0]["text"]
-        print(f"  DeepL HTTP {resp.status_code}: {resp.text[:200]}", file=sys.stderr)
+            candidates = resp.json().get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    return parts[0].get("text", "").strip()
+        print(f"  Gemini HTTP {resp.status_code}: {resp.text[:200]}", file=sys.stderr)
     except Exception as e:
-        print(f"  DeepL error: {e}", file=sys.stderr)
+        print(f"  Gemini error: {e}", file=sys.stderr)
     return ""
 
 
 def translate_ja(text: str) -> str:
-    """DeepL で翻訳（無効時・失敗時は空文字）"""
-    return translate_deepl(text)
+    """Gemini で翻訳（無効時・失敗時は空文字）"""
+    return translate_gemini(text)
 
 
 def _make_session() -> requests.Session:
@@ -219,26 +205,14 @@ def main():
     for p in filtered:
         p["tags"] = assign_tags(p)
 
-    # DeepLでアブスト翻訳
-    if DEEPL_AUTH_KEY and DEEPL_ENABLED:
-        monthly = _deepl_monthly_usage()
-        print(f"  DeepL月間使用量: {monthly:,}/{DEEPL_MONTHLY_LIMIT:,} 文字")
-        if monthly >= DEEPL_MONTHLY_LIMIT:
-            print(f"  ⚠ 月間閾値超過 → 翻訳スキップ")
-            globals()["DEEPL_ENABLED"] = False
-        else:
-            endpoint = "api-free" if DEEPL_AUTH_KEY.endswith(":fx") else "api (Pro)"
-            print(f"  アブスト翻訳中... ({len(filtered)}件, DeepL={endpoint})")
-    else:
-        if DEEPL_AUTH_KEY:
-            print(f"  翻訳スキップ（DEEPL_ENABLED=false）")
-        else:
-            print(f"  翻訳スキップ（DEEPL_AUTH_KEY未設定）")
-    if DEEPL_ENABLED:
+    # Geminiでアブスト翻訳
+    if GEMINI_API_KEY:
+        print(f"  アブスト翻訳中... ({len(filtered)}件, Gemini {GEMINI_MODEL})")
         for p in filtered:
             p["summary_ja"] = translate_ja(p["summary"])
-            time.sleep(0.3)
+            time.sleep(1)
     else:
+        print(f"  翻訳スキップ（GEMINI_API_KEY未設定）")
         for p in filtered:
             p["summary_ja"] = ""
 
@@ -305,8 +279,6 @@ def main():
     out_path = OUTPUT_DIR / f"{timestamp}-neta-trend-hf.md"
     out_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"保存: {out_path}")
-    if deepl_chars_used:
-        print(f"  DeepL消費文字数: {deepl_chars_used:,} 文字")
 
     # Slack通知用URLをファイルに書き出す
     date_path = now.strftime("%Y/%m/%d")

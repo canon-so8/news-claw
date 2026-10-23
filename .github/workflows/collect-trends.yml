@@ -49,8 +49,7 @@ jobs:
       - name: Collect HF Papers
         if: steps.holiday.outputs.skip != 'true'
         env:
-          DEEPL_AUTH_KEY: ${{ secrets.DEEPL_AUTH_KEY }}
-          DEEPL_ENABLED: ${{ vars.DEEPL_ENABLED }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REPO_URL: https://github.com/${{ github.repository }}
           SITE_URL: ${{ steps.site.outputs.site_url }}
         run: python scripts/collect_hf_papers.py
