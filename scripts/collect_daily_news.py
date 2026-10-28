@@ -11,6 +11,7 @@ Claude Code 不要 - RSS/API から直接データ取得してJekyll Markdownを
 
 ※ 商用メディア（ITmedia・東洋経済等）はSlack配信の利用規約リスクのため除外
 """
+import html
 import json
 import os
 import re
@@ -709,11 +710,18 @@ CSS = """<style>
 .tag-oss   { color: #fff; background: #9ccc65; }
 .tag-dev   { color: #fff; background: #4db6ac; }
 .tag-other { color: #fff; background: #bdbdbd; }
+.tag-new   { color: #fff; background: #d32f2f; }
+.filter-bar { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 1rem; }
+.filter-btn { padding: 3px 10px; border: 1px solid #ccc; border-radius: 20px; cursor: pointer;
+  font-size: 0.75rem; font-weight: 700; background: #fff; color: #444; }
+.filter-btn.on { background: #333; color: #fff; border-color: #333; }
+.filter-btn.on.f-new { background: #d32f2f; border-color: #d32f2f; }
+.filter-btn.empty { opacity: 0.35; }
 .tab-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .tab-btn { padding: 6px 14px; border: none; border-radius: 20px; cursor: pointer;
   font-size: 0.85rem; font-weight: 700; background: #e8e8e8; color: #444; transition: background 0.15s; }
 .tab-btn.active { background: #333; color: #fff; }
-.sort-bar { display: flex; gap: 5px; margin-bottom: 1rem; }
+.sort-bar { display: flex; gap: 5px; margin-bottom: 0.5rem; }
 .sort-btn { padding: 3px 11px; border: 1px solid #ccc; border-radius: 20px; cursor: pointer;
   font-size: 0.75rem; font-weight: 700; background: #fff; color: #666; transition: all 0.15s; }
 .sort-btn.active { background: #333; color: #fff; border-color: #333; }
@@ -746,8 +754,44 @@ TAB_NAV = """<div class="tab-nav">
   <button id="sort-hotness" class="sort-btn" onclick="setSort('hotness',this)">Hotness</button>
 </div>"""
 
+def build_filter_bar(articles: list[dict]) -> str:
+    """NEW + 記事に出現するタグのトグル。件数はJSでタブごとに更新する"""
+    present = {t for a in articles for t in a.get("tags", [])}
+    buttons = ['  <button class="filter-btn f-new" data-tag="new" onclick="toggleFilter(this)">NEW <span class="cnt"></span></button>']
+    for key, (label, _) in TAG_LABELS.items():
+        if key in present:
+            buttons.append(f'  <button class="filter-btn" data-tag="{key}" onclick="toggleFilter(this)">{label} <span class="cnt"></span></button>')
+    return '<div class="filter-bar">\n' + "\n".join(buttons) + "\n</div>"
+
+
 SWITCH_JS = """<script>
 let _sort = 'latest';
+const _filters = new Set();
+
+function toggleFilter(btn) {
+  const tag = btn.dataset.tag;
+  if (_filters.has(tag)) _filters.delete(tag); else _filters.add(tag);
+  btn.classList.toggle('on', _filters.has(tag));
+  applyFilter();
+}
+
+// NEW は AND、それ以外のタグ同士は OR で絞り込む
+function applyFilter() {
+  const needNew = _filters.has('new');
+  const topics = [..._filters].filter(t => t !== 'new');
+  document.querySelectorAll('.item').forEach(it => {
+    const tags = (it.dataset.tags || '').split(' ');
+    const ok = (!needNew || tags.includes('new')) && (topics.length === 0 || topics.some(t => tags.includes(t)));
+    it.style.display = ok ? '' : 'none';
+  });
+  const pane = document.querySelector('.tab-pane.active');
+  if (!pane) return;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    const n = pane.querySelectorAll('.item[data-tags~="' + b.dataset.tag + '"]').length;
+    b.querySelector('.cnt').textContent = n;
+    b.classList.toggle('empty', n === 0);
+  });
+}
 
 function sortPane(pane, mode) {
   const items = Array.from(pane.querySelectorAll('.item'));
@@ -786,7 +830,10 @@ function switchTab(id, btn) {
     btnL.style.display = ''; btnH.style.display = '';
     sortPane(pane, _sort);
   }
+  applyFilter();
 }
+
+applyFilter();
 </script>"""
 
 
@@ -811,6 +858,24 @@ def safe_href(url: str) -> str:
     return esc(url)
 
 
+def data_tags(a: dict) -> str:
+    return " ".join(a.get("tags", ["dev"]) + (["new"] if a.get("is_new") else []))
+
+
+def new_badge(a: dict) -> str:
+    return '<span class="tag tag-new">NEW</span> ' if a.get("is_new") else ""
+
+
+def load_previous_urls(today: str) -> set[str]:
+    """前日以前の最新記事に載っていたURL（UTM除去済み）。NEW判定用"""
+    for f in sorted(OUTPUT_DIR.glob("*-neta-trend.md"), reverse=True):
+        if f.name[:10] < today:
+            hrefs = re.findall(r'<div class="item-title">(?:<span[^>]*>NEW</span> )?<a href="([^"]+)"',
+                               f.read_text(encoding="utf-8"))
+            return {_strip_utm(html.unescape(h)) for h in hrefs}
+    return set()
+
+
 def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_key: str) -> list[str]:
     active = " active" if tab_id == "zenn" else ""
     # デフォルト: 最新順
@@ -827,8 +892,8 @@ def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_ke
         author_str = f"@{author}" if author else ""
         meta_parts = [p for p in [date, count_str, author_str] if p] + [ts]
         lines += [
-            f'<div class="item" data-date="{a.get("date","")}" data-count="{count}">',
-            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
+            f'<div class="item" data-date="{a.get("date","")}" data-count="{count}" data-tags="{data_tags(a)}">',
+            f'  <div class="item-title">{new_badge(a)}<a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
             f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
             "</div>",
         ]
@@ -851,8 +916,8 @@ def render_hn(articles: list[dict]) -> list[str]:
         ts       = tag_spans(a.get("tags", ["dev"]))
         meta_parts = [p for p in [date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
         lines += [
-            f'<div class="item" data-date="{a.get("date","")}" data-count="{pts}">',
-            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
+            f'<div class="item" data-date="{a.get("date","")}" data-count="{pts}" data-tags="{data_tags(a)}">',
+            f'  <div class="item-title">{new_badge(a)}<a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
             f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
         ]
         if title_ja:
@@ -928,6 +993,13 @@ def main():
           f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, "
           f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}")
 
+    all_articles = (zenn_articles + qiita_articles + hatena_articles
+                    + blog_articles + hn_articles + slides_articles)
+    prev_urls = load_previous_urls(date_label)
+    for a in all_articles:
+        a["is_new"] = _strip_utm(a["url"]) not in prev_urls
+    print(f"  NEW: {sum(a['is_new'] for a in all_articles)} / {len(all_articles)}")
+
     lines: list[str] = [
         "---",
         "layout: post",
@@ -939,6 +1011,7 @@ def main():
         CSS,
         "",
         TAB_NAV,
+        build_filter_bar(all_articles),
         "",
     ]
 
