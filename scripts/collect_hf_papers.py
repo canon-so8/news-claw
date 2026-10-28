@@ -127,16 +127,20 @@ def fetch_papers(date_str: str) -> list[dict]:
 
 ELI5_KEYS = [("problem", "どんな問題？"), ("idea", "どうやった？"), ("impact", "何がうれしい？")]
 ELI5_CHUNK = 5
+# プロンプトを変えたら上げる。古い版の要約はキャッシュとして使わず作り直す
+ELI5_VERSION = 2
+# Geminiに使う合計時間の上限。超えた分は英語abstractで出し、次回の実行で要約する
+GEMINI_BUDGET_SEC = 300
 
 ELI5_PROMPT = """あなたは機械学習の論文を、専門外のエンジニアにも一読で分かるように紹介する解説者です。
 下のJSON配列の各要素（title と abstract）について、ELI5（5歳児にも分かるくらい噛み砕く）の考え方で、次の3項目を日本語で書いてください。
 
-- problem: どんな困りごとを解決したいのか
-- idea: どうやって解決したのか。できるだけ身近なもののたとえを使う（無理なたとえは不要）
-- impact: 結果として何がうれしいのか。abstractに数値があれば1つだけ入れる
+- problem: どんな困りごとを解決したいのか。それがなぜ困るのか、背景も含めて書く
+- idea: どうやって解決したのか。仕組みを順を追って書き、できるだけ身近なもののたとえを使う（無理なたとえは不要）
+- impact: 結果として何がうれしいのか。それで何ができるようになるかまで書く。abstractに数値があれば1〜2個入れる
 
 書き方のルール:
-- 各項目は1文、60字以内。「〜する」「〜だ」の常体で書く
+- 各項目は2〜3文、100〜150字。「〜する」「〜だ」の常体で書く
 - 専門用語は必要なときだけ使い、初出で（）に一言の説明を付ける。例: ファインチューニング（学習済みモデルの追加学習）
 - モデル名・手法名・データセット名は英語のまま
 - abstractに書かれていないことは書かない。誇張しない
@@ -169,7 +173,7 @@ def load_previous(today: str) -> tuple[set[str], dict[str, dict[str, str]]]:
     for f in files[-5:]:
         for block in f.read_text(encoding="utf-8").split('<div class="paper"')[1:]:
             m_id = re.search(r'arxiv\.org/abs/([0-9.]+)"', block)
-            m_eli5 = re.search(r'<details data-eli5="([^"]*)">', block)
+            m_eli5 = re.search(rf'<details data-eli5="([^"]*)" data-v="{ELI5_VERSION}">', block)
             if m_id and m_eli5:
                 try:
                     cache[m_id.group(1)] = json.loads(unescape(m_eli5.group(1)))
@@ -178,22 +182,38 @@ def load_previous(today: str) -> tuple[set[str], dict[str, dict[str, str]]]:
     return prev_ids, cache
 
 
-def summarize_gemini(papers: list[dict]) -> list[dict[str, str]] | None:
+_use_thinking_config = True
+
+
+def summarize_gemini(papers: list[dict], deadline: float) -> list[dict[str, str]] | None:
     """論文リストを1回のAPI呼び出しでELI5要約。失敗時は None"""
     if not GEMINI_API_KEY or not papers:
         return None
     items = [{"title": p["title"], "abstract": p["summary"]} for p in papers]
+    global _use_thinking_config
+    config = {
+        "temperature": 0.3,
+        "responseMimeType": "application/json",
+        "responseSchema": ELI5_SCHEMA,
+    }
+    if _use_thinking_config:
+        config["thinkingConfig"] = {"thinkingLevel": "low"}
     payload = {
         "contents": [{"parts": [{"text": ELI5_PROMPT + json.dumps(items, ensure_ascii=False)}]}],
-        "generationConfig": {
-            "temperature": 0.3,
-            "responseMimeType": "application/json",
-            "responseSchema": ELI5_SCHEMA,
-        },
+        "generationConfig": config,
     }
     for attempt in range(3):
+        if time.monotonic() > deadline:
+            print("  [WARN] Gemini の時間上限に達したため中断", file=sys.stderr)
+            break
         try:
             resp = requests.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=120)
+            if resp.status_code == 400 and "thinkingConfig" in config and "thinking" in resp.text.lower():
+                # モデルが thinkingLevel 非対応なら外してやり直す
+                print(f"  [WARN] thinkingConfig 非対応のため外して再試行: {resp.text[:200]}", file=sys.stderr)
+                del config["thinkingConfig"]
+                _use_thinking_config = False
+                continue
             if resp.status_code == 200:
                 text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                 result = json.loads(text)
@@ -225,11 +245,14 @@ def summarize_papers(papers: list[dict], cache: dict[str, dict[str, str]]) -> No
         if not p["eli5"] and p["summary"]:
             targets.append(p)
     done = 0
+    deadline = time.monotonic() + GEMINI_BUDGET_SEC
     for i in range(0, len(targets), ELI5_CHUNK):
+        if time.monotonic() > deadline:
+            break
         if i:
             time.sleep(15)  # 無料枠のレートリミット対策
         part = targets[i:i + ELI5_CHUNK]
-        for p, r in zip(part, summarize_gemini(part) or []):
+        for p, r in zip(part, summarize_gemini(part, deadline) or []):
             p["eli5"] = r
             done += 1
     print(f"ELI5要約: {done}/{len(targets)} 件（キャッシュ {len(papers) - len(targets)} 件）")
@@ -343,7 +366,7 @@ def main():
             eli5_attr = escape(json.dumps(p["eli5"], ensure_ascii=False), quote=True)
             body = "<br>".join(f'<b>{label}</b> {escape(p["eli5"][k])}' for k, label in ELI5_KEYS)
             detail_lines += [
-                f'<details data-eli5="{eli5_attr}">',
+                f'<details data-eli5="{eli5_attr}" data-v="{ELI5_VERSION}">',
                 '<summary>要約を読む</summary>',
                 f'<blockquote>{body}</blockquote>',
                 '</details>',
