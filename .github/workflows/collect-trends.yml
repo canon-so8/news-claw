@@ -1,7 +1,12 @@
 name: Collect Trends
 
 on:
-  workflow_dispatch:  # 外部cron（cron-job.org）からAPI経由で発火
+  workflow_dispatch:  # 外部cron（cron-job.org）からAPI経由で発火（JST 11:55）
+    inputs:
+      notify_at:
+        description: "Slack送信時刻(JST HH:MM)。この10分前以内に準備できたら時刻ちょうどまで待つ"
+        required: false
+        default: "12:00"
 
 permissions:
   contents: write
@@ -78,8 +83,10 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          # この時刻(JST)の10分前以内に準備できたら、時刻ちょうどまで待ってから送る
+          NOTIFY_AT_JST: ${{ inputs.notify_at || '12:00' }}
         run: |
-          python - <<'EOF'
+          python -u - <<'EOF'
           import json, urllib.request, os, time
           from pathlib import Path
           from datetime import datetime, timezone, timedelta
@@ -115,16 +122,33 @@ jobs:
               print(f'{label} タイムアウト。そのまま送信します。')
               return False
 
-          now = datetime.now(timezone(timedelta(hours=9)))
-          date_str = now.strftime("%Y-%m-%d")
+          JST = timezone(timedelta(hours=9))
+
+          def wait_until_notify_time():
+              hh, mm = map(int, os.environ.get("NOTIFY_AT_JST", "12:00").split(":"))
+              now = datetime.now(JST)
+              target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+              wait = (target - now).total_seconds()
+              # 手動実行など予定外の時刻に動いたときは待たない
+              if 0 < wait <= 600:
+                  print(f"{target:%H:%M:%S} まで {wait:.0f} 秒待機")
+                  time.sleep(wait)
+              else:
+                  print(f"送信時刻の待機なし（現在 {now:%H:%M:%S}）")
+
+          date_str = datetime.now(JST).strftime("%Y-%m-%d")
 
           daily_url = Path("/tmp/daily_url.txt").read_text().strip() if Path("/tmp/daily_url.txt").exists() else ""
           hf_url    = Path("/tmp/hf_url.txt").read_text().strip()    if Path("/tmp/hf_url.txt").exists()    else ""
 
           if daily_url:
               wait_for_url(daily_url, "ニュース")
-              post(f"<{daily_url}|{date_str} : ニュース>")
           if hf_url:
               wait_for_url(hf_url, "トレンド論文")
+          wait_until_notify_time()
+          if daily_url:
+              post(f"<{daily_url}|{date_str} : ニュース>")
+          if hf_url:
               post(f"<{hf_url}|{date_str} : トレンド論文>")
+          print(f"送信完了 {datetime.now(JST):%H:%M:%S}")
           EOF
