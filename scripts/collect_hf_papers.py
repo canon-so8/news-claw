@@ -183,6 +183,8 @@ def load_previous(today: str) -> tuple[set[str], dict[str, dict[str, str]]]:
 
 
 _use_thinking_config = True
+# 1日の無料枠を使い切ったら、その回は以降のリクエストを送らない
+_daily_quota_exhausted = False
 
 
 def summarize_gemini(papers: list[dict], deadline: float) -> list[dict[str, str]] | None:
@@ -190,7 +192,7 @@ def summarize_gemini(papers: list[dict], deadline: float) -> list[dict[str, str]
     if not GEMINI_API_KEY or not papers:
         return None
     items = [{"title": p["title"], "abstract": p["summary"]} for p in papers]
-    global _use_thinking_config
+    global _use_thinking_config, _daily_quota_exhausted
     config = {
         "temperature": 0.3,
         "responseMimeType": "application/json",
@@ -221,7 +223,14 @@ def summarize_gemini(papers: list[dict], deadline: float) -> list[dict[str, str]
                         and all(all(str(r.get(k, "")).strip() for k, _ in ELI5_KEYS) for r in result)):
                     return [{k: " ".join(str(r[k]).split()) for k, _ in ELI5_KEYS} for r in result]
                 print(f"  [WARN] Gemini 応答の形式不一致: {text[:200]}", file=sys.stderr)
+            elif resp.status_code == 429 and "PerDay" in resp.text:
+                quota_ids = sorted(set(re.findall(r'"quotaId":\s*"([^"]+)"', resp.text)))
+                print(f"  [WARN] Gemini の1日の無料枠を使い切ったため以降は要約しない: {quota_ids}", file=sys.stderr)
+                _daily_quota_exhausted = True
             elif resp.status_code in (429, 503) and attempt < 2:
+                if resp.status_code == 429:
+                    quota_ids = sorted(set(re.findall(r'"quotaId":\s*"([^"]+)"', resp.text)))
+                    print(f"  [RETRY] quota: {quota_ids}")
                 wait = (attempt + 1) * 30
                 print(f"  [RETRY] HTTP {resp.status_code}, {wait}秒待機...")
                 time.sleep(wait)
@@ -247,7 +256,7 @@ def summarize_papers(papers: list[dict], cache: dict[str, dict[str, str]]) -> No
     done = 0
     deadline = time.monotonic() + GEMINI_BUDGET_SEC
     for i in range(0, len(targets), ELI5_CHUNK):
-        if time.monotonic() > deadline:
+        if time.monotonic() > deadline or _daily_quota_exhausted:
             break
         if i:
             time.sleep(15)  # 無料枠のレートリミット対策
