@@ -131,7 +131,7 @@ def fetch_papers(date_str: str) -> list[dict]:
 # (訳を入れるキー, 原文のキー, 記事HTMLから訳を拾う正規表現, 1リクエストあたりの件数)
 TRANSLATE_FIELDS = [
     ("summary_ja", "ai_summary", re.compile(r'<p class="summary-ja">(.*?)</p>'), 30),
-    ("abstract_ja", "summary", re.compile(r'<blockquote class="abstract-ja">(.*?)</blockquote>'), 10),
+    ("abstract_ja", "summary", re.compile(r'<blockquote class="abstract-ja">(.*?)</blockquote>'), 5),
 ]
 
 
@@ -174,7 +174,7 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
     }
     for attempt in range(3):
         try:
-            resp = requests.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=180)
+            resp = requests.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=120)
             if resp.status_code == 200:
                 text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                 result = json.loads(text)
@@ -190,6 +190,9 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
                 print(f"  [WARN] Gemini HTTP {resp.status_code}: {resp.text[:300]}", file=sys.stderr)
         except Exception as e:
             print(f"  [WARN] Gemini error: {e}", file=sys.stderr)
+            if attempt < 2:
+                time.sleep(15)
+                continue
         break
     return None
 
@@ -214,7 +217,8 @@ def translate_summaries(papers: list[dict], cache: dict[str, dict[str, str]]) ->
                 if ja.strip():
                     p[key] = ja.strip()
                     done += 1
-        print(f"{key} 翻訳: {done}/{len(targets)} 件（キャッシュ {len(papers) - len(targets)} 件）")
+        cached = sum(bool(cache.get(p["id"], {}).get(key)) for p in papers)
+        print(f"{key} 翻訳: {done}/{len(targets)} 件（キャッシュ {cached} 件）")
 
 
 def main():
