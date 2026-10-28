@@ -24,7 +24,7 @@ OUTPUT_DIR = REPO_ROOT / "_posts" / "arxiv"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-3.8-flash"
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 TAGS_RULES = {
     "agent": ["agent", "agentic", "multi-agent", "tool use", "react", "workflow", "planning"],
@@ -182,67 +182,91 @@ def load_previous(today: str) -> tuple[set[str], dict[str, dict[str, str]]]:
     return prev_ids, cache
 
 
-_use_thinking_config = True
-# 1日の無料枠を使い切ったら、その回は以降のリクエストを送らない
-_daily_quota_exhausted = False
+# thinkingLevel に対応していなかったモデル
+_no_thinking_models: set[str] = set()
+# 1日の無料枠を使い切ったモデル（枠はモデルごとに別）
+_exhausted_models: set[str] = set()
 
 
-def summarize_gemini(papers: list[dict], deadline: float) -> list[dict[str, str]] | None:
-    """論文リストを1回のAPI呼び出しでELI5要約。失敗時は None"""
-    if not GEMINI_API_KEY or not papers:
-        return None
-    items = [{"title": p["title"], "abstract": p["summary"]} for p in papers]
-    global _use_thinking_config, _daily_quota_exhausted
+def gemini_models() -> list[str]:
+    """メインのモデルと、混雑・枠切れ時に切り替える軽量モデル（flash-lite の最新安定版）"""
+    fallback = os.environ.get("GEMINI_FALLBACK_MODEL", "")
+    if not fallback and GEMINI_API_KEY:
+        try:
+            resp = requests.get(f"{GEMINI_API_BASE}/models", params={"pageSize": 1000},
+                                headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=30)
+            resp.raise_for_status()
+            names = [m["name"].removeprefix("models/") for m in resp.json().get("models", [])
+                     if "generateContent" in m.get("supportedGenerationMethods", [])]
+            lites = [n for n in names if "flash-lite" in n and not re.search(r"preview|exp|tts|image|live", n)]
+            if lites:
+                fallback = max(lites, key=lambda n: [int(x) for x in re.findall(r"\d+", n)])
+        except Exception as e:
+            print(f"  [WARN] Gemini モデル一覧の取得に失敗: {e}", file=sys.stderr)
+    models = [GEMINI_MODEL] + ([fallback] if fallback and fallback != GEMINI_MODEL else [])
+    print(f"Gemini モデル: {models}")
+    return models
+
+
+def _request_gemini(model: str, items: list[dict], n: int) -> list[dict[str, str]] | None:
+    """1モデルに1回だけ送る。失敗理由はログに出して None"""
     config = {
         "temperature": 0.3,
         "responseMimeType": "application/json",
         "responseSchema": ELI5_SCHEMA,
     }
-    if _use_thinking_config:
+    if model not in _no_thinking_models:
         config["thinkingConfig"] = {"thinkingLevel": "low"}
     payload = {
         "contents": [{"parts": [{"text": ELI5_PROMPT + json.dumps(items, ensure_ascii=False)}]}],
         "generationConfig": config,
     }
-    for attempt in range(3):
-        if time.monotonic() > deadline:
-            print("  [WARN] Gemini の時間上限に達したため中断", file=sys.stderr)
-            break
-        try:
-            resp = requests.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=120)
-            if resp.status_code == 400 and "thinkingConfig" in config and "thinking" in resp.text.lower():
-                # モデルが thinkingLevel 非対応なら外してやり直す
-                print(f"  [WARN] thinkingConfig 非対応のため外して再試行: {resp.text[:200]}", file=sys.stderr)
-                del config["thinkingConfig"]
-                _use_thinking_config = False
+    url = f"{GEMINI_API_BASE}/models/{model}:generateContent"
+    try:
+        resp = requests.post(url, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=90)
+        if resp.status_code == 400 and "thinkingConfig" in config and "thinking" in resp.text.lower():
+            print(f"  [WARN] {model}: thinkingConfig 非対応のため外して再試行", file=sys.stderr)
+            _no_thinking_models.add(model)
+            return _request_gemini(model, items, n)
+        if resp.status_code == 200:
+            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            result = json.loads(text)
+            if (isinstance(result, list) and len(result) == n
+                    and all(all(str(r.get(k, "")).strip() for k, _ in ELI5_KEYS) for r in result)):
+                return [{k: " ".join(str(r[k]).split()) for k, _ in ELI5_KEYS} for r in result]
+            print(f"  [WARN] {model}: 応答の形式不一致: {text[:200]}", file=sys.stderr)
+        elif resp.status_code == 429 and "PerDay" in resp.text:
+            quota_ids = sorted(set(re.findall(r'"quotaId":\s*"([^"]+)"', resp.text)))
+            print(f"  [WARN] {model}: 1日の無料枠を使い切ったので今回は使わない {quota_ids}", file=sys.stderr)
+            _exhausted_models.add(model)
+        else:
+            quota_ids = sorted(set(re.findall(r'"quotaId":\s*"([^"]+)"', resp.text)))
+            print(f"  [WARN] {model}: HTTP {resp.status_code} {quota_ids or resp.text[:150]}", file=sys.stderr)
+    except Exception as e:
+        print(f"  [WARN] {model}: {e}", file=sys.stderr)
+    return None
+
+
+def summarize_gemini(papers: list[dict], models: list[str], deadline: float) -> list[dict[str, str]] | None:
+    """論文リストをELI5要約。混雑・タイムアウト時は待たずに次のモデルへ切り替え、全滅なら少し待ってもう1巡。
+    失敗したモデルは models の末尾に回すので、次の呼び出しは直前に成功したモデルから試す"""
+    if not GEMINI_API_KEY or not papers:
+        return None
+    items = [{"title": p["title"], "abstract": p["summary"]} for p in papers]
+    for round_ in range(2):
+        if round_:
+            time.sleep(15)
+        for model in list(models):
+            if model in _exhausted_models:
                 continue
-            if resp.status_code == 200:
-                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                result = json.loads(text)
-                if (isinstance(result, list) and len(result) == len(papers)
-                        and all(all(str(r.get(k, "")).strip() for k, _ in ELI5_KEYS) for r in result)):
-                    return [{k: " ".join(str(r[k]).split()) for k, _ in ELI5_KEYS} for r in result]
-                print(f"  [WARN] Gemini 応答の形式不一致: {text[:200]}", file=sys.stderr)
-            elif resp.status_code == 429 and "PerDay" in resp.text:
-                quota_ids = sorted(set(re.findall(r'"quotaId":\s*"([^"]+)"', resp.text)))
-                print(f"  [WARN] Gemini の1日の無料枠を使い切ったため以降は要約しない: {quota_ids}", file=sys.stderr)
-                _daily_quota_exhausted = True
-            elif resp.status_code in (429, 503) and attempt < 2:
-                if resp.status_code == 429:
-                    quota_ids = sorted(set(re.findall(r'"quotaId":\s*"([^"]+)"', resp.text)))
-                    print(f"  [RETRY] quota: {quota_ids}")
-                wait = (attempt + 1) * 30
-                print(f"  [RETRY] HTTP {resp.status_code}, {wait}秒待機...")
-                time.sleep(wait)
-                continue
-            else:
-                print(f"  [WARN] Gemini HTTP {resp.status_code}: {resp.text[:300]}", file=sys.stderr)
-        except Exception as e:
-            print(f"  [WARN] Gemini error: {e}", file=sys.stderr)
-            if attempt < 2:
-                time.sleep(15)
-                continue
-        break
+            if time.monotonic() > deadline:
+                print("  [WARN] Gemini の時間上限に達したため中断", file=sys.stderr)
+                return None
+            result = _request_gemini(model, items, len(papers))
+            if result:
+                return result
+            models.remove(model)
+            models.append(model)
     return None
 
 
@@ -254,16 +278,18 @@ def summarize_papers(papers: list[dict], cache: dict[str, dict[str, str]]) -> No
         if not p["eli5"] and p["summary"]:
             targets.append(p)
     done = 0
-    deadline = time.monotonic() + GEMINI_BUDGET_SEC
-    for i in range(0, len(targets), ELI5_CHUNK):
-        if time.monotonic() > deadline or _daily_quota_exhausted:
-            break
-        if i:
-            time.sleep(15)  # 無料枠のレートリミット対策
-        part = targets[i:i + ELI5_CHUNK]
-        for p, r in zip(part, summarize_gemini(part, deadline) or []):
-            p["eli5"] = r
-            done += 1
+    if targets and GEMINI_API_KEY:
+        models = gemini_models()
+        deadline = time.monotonic() + GEMINI_BUDGET_SEC
+        for i in range(0, len(targets), ELI5_CHUNK):
+            if time.monotonic() > deadline or all(m in _exhausted_models for m in models):
+                break
+            if i:
+                time.sleep(5)  # 無料枠の1分あたり上限対策
+            part = targets[i:i + ELI5_CHUNK]
+            for p, r in zip(part, summarize_gemini(part, models, deadline) or []):
+                p["eli5"] = r
+                done += 1
     print(f"ELI5要約: {done}/{len(targets)} 件（キャッシュ {len(papers) - len(targets)} 件）")
 
 
