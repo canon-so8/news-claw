@@ -49,207 +49,146 @@ ATOM   = "http://www.w3.org/2005/Atom"
 RDF    = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 HATENA = "http://www.hatena.ne.jp/info/xmlns#"
 
-# --- タグ判定（複数タグ対応、全キーワードリストを走査してマッチしたタグを全て返す）---
-AGENT_KEYWORDS = [
-    # LLM/モデル名
-    "claude ", "claude\u300c", "claude\u300d", "claude code",
-    "gpt-4", "gpt-5", "gpt-4o", "chatgpt", "openai", "codex",
-    "gemini ", "gemini-", "bard",
-    "llama", "mistral", "phi-", "qwen", "deepseek",
-    "llm", "大規模言語モデル", "言語モデル",
-    "anthropic", "notebooklm",
-    "rag ", "ファインチューニング", "fine-tun", "alignment",
-    "chain-of-thought", "プロンプトエンジニアリング", "ハーネスエンジニアリング",
-    "駆動開発",
-    # エージェント
-    "ai agent", "agentic", "multi-agent", "マルチエージェント",
-    "aiエージェント", "llmエージェント", "自律エージェント",
-    "mcp", "tool use", "tool calling", "function calling",
-    "langgraph", "langchain", "crewai", "autogen", "dspy", "smolagents",
-    "computer use", "browser use",
-    "workflow automation", "オーケストレーション",
+# --- 分野判定（1記事1分野。タイトル一致3点・説明文一致1点で最高点の分野、同点は GENRES の順）---
+GENRES: list[tuple[str, str, list[str]]] = [
+    ("sec", "セキュリティ", [
+        "セキュリティ", "security", "脆弱性", "vulnerability", "cve", "サイバー", "cyber",
+        "攻撃", "attack", "不正アクセス", "不正ログイン", "乗っ取り", "情報漏洩", "漏洩", "流出",
+        "leak", "breach", "マルウェア", "malware", "ランサムウェア", "ransomware",
+        "フィッシング", "phishing", "ゼロデイ", "zero-day", "サプライチェーン攻撃",
+        "認証", "authentication", "認可", "oauth", "oidc", "sso", "パスワード", "password",
+        "パスキー", "passkey", "xss", "csrf", "インジェクション", "injection",
+        "ペネトレーション", "pentest", "ゼロトラスト", "zero trust", "暗号化", "encryption",
+        "証明書", "tls", "ssl", "権限", "active directory", "セキュア", "secure",
+        "プライバシー", "privacy", "ハッキング", "siem", "waf",
+        "情報漏えい", "ハッカー", "hacker", "hacked", "exploit", "pwned", "スパイ", "spy", "otp", "bypass", "credential", "脅威", "threat", "詐欺", "fraud", "scam", "スパム", "spam", "csp", "certificate authority", "不正", "被害",
+    ]),
+    ("agent", "AIエージェント", [
+        "aiエージェント", "ai agent", "エージェント", "agent", "agentic", "マルチエージェント",
+        "サブエージェント", "subagent", "コーディングエージェント", "coding agent",
+        "claude code", "codex", "cursor", "copilot", "devin", "cline", "windsurf", "kiro",
+        "aider", "gemini cli", "claude.md", "agents.md", "mcp", "a2a",
+        "langgraph", "langchain", "crewai", "autogen", "smolagents", "mastra",
+        "computer use", "browser use", "tool use", "tool calling", "function calling",
+        "バイブコーディング", "vibe coding", "ai駆動開発", "ハーネスエンジニアリング",
+        "コンテキストエンジニアリング", "context engineering",
+        "llmエージェント", "ハーネス", "harness", "skill", "skills", "tool-call", "kimi code",
+    ]),
+    ("llm", "LLM・生成AI", [
+        "llm", "llms", "大規模言語モデル", "言語モデル", "生成ai", "generative ai", "ai",
+        "人工知能", "chatgpt", "gpt", "openai", "anthropic", "claude", "gemini", "gemma",
+        "llama", "mistral", "qwen", "deepseek", "grok", "notebooklm", "perplexity",
+        "rag", "プロンプト", "prompt", "ファインチューニング", "fine-tun", "lora",
+        "embedding", "埋め込み", "ベクトル検索", "vector", "チャットボット", "chatbot",
+        "推論モデル", "reasoning model", "トークン",
+        "fable", "opus", "sonnet", "haiku", "vllm", "ollama", "litellm", "lfm", "kimi", "sarashina", "国産モデル", "model training",
+    ]),
+    ("ml", "ML・データ", [
+        "機械学習", "深層学習", "強化学習", "ニューラル", "machine learning", "deep learning",
+        "reinforcement learning", "neural", "pytorch", "tensorflow", "jax", "kaggle",
+        "transformer", "diffusion", "画像認識", "画像生成", "動画生成", "物体検出",
+        "セグメンテーション", "ocr", "yolo", "コンピュータビジョン", "computer vision",
+        "音声認識", "音声合成", "tts", "asr", "データ分析", "データサイエンス", "data science",
+        "統計", "statistics", "pandas", "polars", "numpy", "scikit-learn", "xgboost", "lightgbm",
+        "特徴量", "回帰", "時系列", "レコメンド", "推薦", "論文", "arxiv", "paper", "研究",
+        "research", "量子", "quantum", "ロボット", "robot", "自動運転", "データ基盤", "etl",
+        "dbt", "bigquery", "snowflake", "databricks",
+        "visual", "vision", "3d", "数学", "mathematics", "spss", "判別モデル",
+    ]),
+    ("infra", "インフラ・運用", [
+        "aws", "gcp", "google cloud", "azure", "クラウド", "cloud", "kubernetes", "k8s",
+        "docker", "コンテナ", "container", "terraform", "ansible", "インフラ", "infrastructure",
+        "サーバーレス", "serverless", "lambda", "cloud run", "ecs", "eks", "fargate",
+        "cloudflare", "vercel", "netlify", "デプロイ", "deploy", "ci/cd", "github actions",
+        "監視", "monitoring", "オブザーバビリティ", "observability", "opentelemetry",
+        "datadog", "new relic", "sre", "障害", "incident", "インシデント", "運用", "オンコール",
+        "ログ設計", "ログ収集", "ログ基盤", "ロギング", "nginx", "linux", "サーバー", "server", "ネットワーク", "network", "dns",
+        "cdn", "vps", "自宅サーバー", "homelab", "マイクロサービス", "microservice",
+        "re:invent", "jaws-ug", "s3", "ジョブ基盤", "定期実行", "valkey", "tailscale", "ci", "本番db", "nw",
+    ]),
+    ("web", "Web・アプリ", [
+        "react", "vue", "svelte", "next.js", "nuxt", "angular", "astro", "remix",
+        "フロントエンド", "frontend", "css", "html", "tailwind", "ブラウザ", "browser",
+        "chrome", "web", "ui", "ux", "デザインシステム", "figma", "アクセシビリティ",
+        "バックエンド", "backend", "api", "graphql", "grpc", "データベース", "database",
+        "sql", "postgres", "postgresql", "mysql", "sqlite", "redis", "mongodb", "dynamodb",
+        "orm", "django", "rails", "laravel", "fastapi", "express.js", "spring", "wordpress",
+        "flutter", "react native", "swiftui", "ios", "android", "モバイル", "mobile",
+        "アプリ開発", "スマホアプリ", "webassembly", "wasm",
+        "website", "websites", "vite", "vuefes", "chromium", "v8", "canvas", "riverpod", "duckdb", "署名付きurl", "スクロール", "ゲーム", "game", "unity", "unreal", "godot", "ゲームエンジン",
+    ]),
+    ("tools", "言語・開発ツール", [
+        "python", "javascript", "typescript", "rust", "go", "golang", "java", "kotlin",
+        "swift", "c++", "c#", "ruby", "elixir", "zig", "haskell", "scala", "dart", "lua",
+        "php", "perl", "ocaml", "r言語", "プログラミング言語",
+        "git", "github", "gitlab", "プルリクエスト", "pull request", "vscode", "vim", "neovim",
+        "emacs", "jetbrains", "intellij", "cli", "ターミナル", "terminal", "シェル", "shell",
+        "bash", "zsh", "makefile", "npm", "pnpm", "yarn", "bun", "deno", "node.js", "pip",
+        "uv", "poetry", "cargo", "homebrew", "パッケージ", "ライブラリ", "library",
+        "フレームワーク", "テスト", "testing", "tdd", "リファクタリング", "refactor",
+        "コードレビュー", "code review", "設計", "アーキテクチャ", "architecture",
+        "ドメイン駆動", "ddd", "デザインパターン", "プログラミング", "programming",
+        "コーディング", "コンパイラ", "compiler", "アルゴリズム", "algorithm", "正規表現",
+        "regex", "wsl", "dotfiles", "開発環境", "エディタ", "oss", "オープンソース",
+        "open source", "個人開発", "自作",
+        "型安全", "ユーティリティ", "パターン", "ドメイン", "要件定義", "qa", "品質保証", "e2e", "スタックトレース", "ヒープ", "debugger", "デバッグ", "obsidian", "ghostty", "fzf", "ノーコード", "power automate", "sharepoint", "スプレッドシート", "excel", "ソフトウェアエンジニアリング", "software",
+    ]),
+    ("career", "キャリア・組織", [
+        "キャリア", "career", "転職", "働き方", "エンジニアとして", "新人", "新卒", "未経験",
+        "マネジメント", "マネージャー", "manager", "組織", "チーム", "リーダー", "採用",
+        "hiring", "評価制度", "1on1", "育成", "学習法", "勉強法", "勉強会", "資格", "試験",
+        "マインドセット", "生き方", "ポエム", "振り返り", "属人化", "仕事術", "生産性",
+        "コミュニケーション", "burnout", "燃え尽き",
+        "lt会", "登壇", "参加記", "参加レポート", "レポ", "インターン", "入社", "報連相", "読書", "アジャイル", "agile", "スクラム", "バックログ", "エンジニア歴", "シニア", "中堅", "ライティング", "advice", "pm",
+    ]),
+    ("biz", "業界・製品", [
+        "株価", "決算", "買収", "acquisition", "資金調達", "ipo", "スタートアップ", "startup",
+        "半導体", "nvidia", "tsmc", "規制", "政策", "法案", "訴訟", "lawsuit", "裁判",
+        "政府", "government", "doj", "fcc", "市場", "業界", "経済", "economy", "値上げ",
+        "料金", "価格", "提供開始", "サービス開始", "サービス終了", "macbook", "iphone",
+        "ipad", "imac", "censorship", "検閲",
+        "gpu", "tpu", "raspberry pi", "ハードウェア", "hardware", "ガジェット", "gadget", "buyout", "buyouts", "layoff", "laid off", "レイオフ", "撤退", "上場", "経営", "penalty", "court", "shutting down",
+    ]),
 ]
-AI_KEYWORDS   = [
-    "生成ai", "aiネイティブ", "ai駆動",
-    "人工知能", "生成モデル", "画像生成ai", "動画生成ai",
-    "ai活用", "aiを活用", "aiで", "aiが", "ai搭載", "aiツール",
-    "aiアシスタント", "aiサービス", "ai開発", "ai導入",
-]
-# copilot/cursor/agentは文脈で分かれるため、AI専用キーワードと組み合わせて判定
-AI_COMBO_KEYWORDS = ["copilot", "cursor "]  # agentはAGENT_KEYWORDSで処理
-ML_KEYWORDS   = [
-    "machine learning", "deep learning", "reinforcement learning", "pytorch", "tensorflow",
-    "kaggle", "neural network", "transformer", "bert", "llama", "optimizer",
-    "機械学習", "深層学習", "強化学習", "ニューラル",
-    "統計学", "統計的", "回帰分析", "分類問題", "クラスタリング", "特徴量",
-    "学習率", "活性化関数", "損失関数", "バックプロパゲーション",
-    "scikit", "xgboost", "lightgbm", "catboost", "データサイエンス",
-    "過学習", "正則化", "バッチ正規化", "アテンション機構",
-    "特徴抽出", "埋め込みモデル", "テキスト埋め込み", "ベイズ", "tabnet",
-    "分散並列", "並列学習", "コンペ", "モデル学習", "自然言語処理",
-    "音声認識", "音声合成", "音声処理", "音響", "asr", "tts", "speech recognition",
-    "speech synthesis", "音声モデル","kaggle"
-]
-CV_KEYWORDS   = [
-    "image", "video", "vision", "diffusion", "gan", "vae", "3d reconstruction",
-    "yolo", "resnet", "vit ", "pose estimation", "depth estimation",
-    "画像認識", "画像生成", "動画生成", "物体検出", "セグメンテーション", "ocr",
-    "コンピュータビジョン", "点群", "自動運転", "autonomous driving",
-    "ロボット", "robot", "lerobot", "3次元",
-]
-POEM_KEYWORDS = [
-    "エンジニア哲学", "仕事術", "ポエム", "エンジニアの心得",
-    "生き方", "働き方", "マインドセット", "組織論", "チームビルディング",
-    "リーダーシップ", "マネジメント論",
-    "エンジニアとして", "技術者として", "プログラマとして",
-    "未経験から", "未経験でも", "新人エンジニア",
-    "折れない", "後悔しない", "成長するため",
-    "してみた", "触ってみた", "考えてみた", "使ってみた", "試してみた",
-    "やってみた", "振り返って", "振り返り",
-    "な話", "という話", "った話", "した話","話","考え","できた"
-]
-ECO_KEYWORDS  = [
-    "経済", "半導体", "nvidia", "tsmc", "テック企業", "産業動向", "規制",
-    "政策", "株価", "business", "startup", "スタートアップ", "vc ", "融資",
-    "ipo", "資金調達", "市場規模", "シェア", "競合", "買収", "合併",
-    "apple", "google", "microsoft", "meta ", "amazon", "tesla",
-]
-GIT_KEYWORDS  = [
-    "git ", "github", "gitlab", "gitflow", "git-",
-    "pull request", "プルリクエスト", "マージリクエスト",
-    "ブランチ戦略", "バージョン管理", "コード管理",
-    "github actions", "git hooks", "git submodule", "git rebase",
-]
-PKG_KEYWORDS  = [
-    "npm", "pip ", "yarn", "pnpm", "cargo ",
-    "pypi", "homebrew", "brew ",
-    "パッケージ", "依存関係", "ライブラリ更新", "パッケージ管理",
-    "package manager", "dependency", "poetry ", "uv ",
-    "requirements.txt", "package.json", "go.mod", "composer",
-]
-SEC_KEYWORDS  = [
-    "セキュリティ", "security", "脆弱性", "vulnerability", "cve-",
-    "サプライチェーン攻撃", "ゼロデイ", "zero-day", "マルウェア", "malware",
-    "暗号化", "encryption", "認証", "authentication", "oauth", "oidc",
-    "xss", "csrf", "sql injection", "ペネトレーション", "penetration",
-    "crowdstrike", "soc ", "siem", "ゼロトラスト", "zero trust",
-    "ssh", "ssl", "tls", "証明書", "certificate",
-]
-CLOUD_KEYWORDS = [
-    "aws", "gcp", "azure", "クラウド", "cloud",
-    "kubernetes", "k8s", "docker", "コンテナ",
-    "デプロイ", "インフラ", "terraform", "cloudflare",
-    "サーバーレス", "lambda", "cloud run", "fargate",
-    "マイクロサービス", "microservice",
-]
-LANG_KEYWORDS = [
-    "python", "javascript", "typescript", "rust", "go ", "golang",
-    "java ", "kotlin", "swift", "c++", "c#", "ruby", "elixir", "zig",
-    "haskell", "scala", "dart", "lua", "perl", "r言語",
-]
-FRONT_KEYWORDS = [
-    "react", "vue", "svelte", "next.js", "nuxt", "angular", "astro",
-    "フロントエンド", "frontend", "css", "html", "tailwind", "sass",
-    "レスポンシブ", "responsive", "spa ", "ssr ", "dom ", "webcomponent",
-    "ui/ux", "デザインシステム", "コンポーネント", "storybook",
-    "ブラウザ", "browser", "web api", "webassembly", "wasm",
-]
-BACK_KEYWORDS  = [
-    "バックエンド", "backend", "サーバーサイド", "server-side",
-    "データベース", "sql", "postgresql", "mysql", "redis", "mongodb",
-    "api設計", "rest api", "restapi", "graphql", "grpc",
-    "orm ", "migration", "テーブル設計", "スキーマ設計",
-    "マイグレーション", "全文検索", "elasticsearch",
-    "nginx", "apache", "express", "fastapi", "django", "rails",
-]
-RESEARCH_KEYWORDS = [
-    "論文", "paper", "arxiv", "研究", "research",
-    "学会", "conference", "icml", "neurips", "iclr", "cvpr", "aaai",
-    "サーベイ", "survey", "ベンチマーク", "benchmark",
-    "実験", "experiment", "提案手法", "先行研究", "state-of-the-art", "sota",
-]
-OSS_KEYWORDS   = [
-    "oss", "オープンソース", "open source", "open-source",
-    "コントリビュート", "contribute", "プルリクエスト",
-    "license", "ライセンス", "mit license", "apache license",
-    "公開しました", "リリースしました", "作りました",
-    "自作", "個人開発", "趣味開発",
-]
-DEV_KEYWORDS  = [
-    "linux", "cli", "sdk", "vscode",
-    "ios開発", "android開発", "アプリ開発", "ios向け",
-    "プログラミング", "コーディング", "ライブラリ", "フレームワーク",
-    "バグ", "テスト", "ci/cd", "コマンドライン", "ターミナル", "シェルスクリプト",
-    "bash ", "zsh", "makefile",
-    "uuid", "スキーマ", "パフォーマンス",
-    "リファクタリング", "コードレビュー", "開発環境", "wsl",
-    "ログ設計", "ログ収集", "監視", "オブザーバビリティ",
-    "hostsファイル",
-]
-
-TAG_LABELS = {
-    "agent":    ("Agent",        "tag-agent"),
-    "ai":       ("AI",           "tag-ai"),
-    "ml":       ("機械学習",      "tag-ml"),
-    "cv":       ("画像",         "tag-cv"),
-    "research": ("研究",         "tag-research"),
-    "sec":      ("セキュリティ",   "tag-sec"),
-    "poem":     ("ポエム",        "tag-poem"),
-    "eco":      ("経済",         "tag-eco"),
-    "front":    ("フロントエンド", "tag-front"),
-    "back":     ("バックエンド",   "tag-back"),
-    "cloud":    ("クラウド",      "tag-cloud"),
-    "lang":     ("言語",         "tag-lang"),
-    "git":      ("Git",          "tag-git"),
-    "pkg":      ("パッケージ",     "tag-pkg"),
-    "oss":      ("OSS",          "tag-oss"),
-    "dev":      ("開発",         "tag-dev"),
-    "other":    ("その他",       "tag-other"),
-}
+GENRE_LABELS = {key: label for key, label, _ in GENRES} | {"other": "その他"}
+_GENRE_ORDER = {key: i for i, (key, _, _) in enumerate(GENRES)}
 
 
-_TAG_RULES: list[tuple[str, list[str]]] = [
-    ("agent",    AGENT_KEYWORDS),
-    ("ai",       AI_KEYWORDS),
-    ("ml",       ML_KEYWORDS),
-    ("cv",       CV_KEYWORDS),
-    ("research", RESEARCH_KEYWORDS),
-    ("sec",      SEC_KEYWORDS),
-    ("poem",     POEM_KEYWORDS),
-    ("eco",      ECO_KEYWORDS),
-    ("front",    FRONT_KEYWORDS),
-    ("back",     BACK_KEYWORDS),
-    ("cloud",    CLOUD_KEYWORDS),
-    ("lang",     LANG_KEYWORDS),
-    ("git",      GIT_KEYWORDS),
-    ("pkg",      PKG_KEYWORDS),
-    ("oss",      OSS_KEYWORDS),
-    ("dev",      DEV_KEYWORDS),
+def _kw_pattern(kw: str) -> re.Pattern:
+    # 英数字のキーワードは単語の途中に反応しないよう前後を区切る（evaluation の lua など）。
+    # 後ろは英字の連続だけ弾く（qwen3 は拾う）。5文字以上は agents / fine-tuning のような語形変化も拾う
+    if re.fullmatch(r"[a-z0-9 .+#/\-]+", kw):
+        tail = r"(?![a-z])" if len(kw) <= 4 or not kw[-1].isalnum() else ""
+        return re.compile(r"(?<![a-z0-9])" + re.escape(kw) + tail)
+    return re.compile(re.escape(kw))
+
+
+# 長いキーワードから順に照合して一致部分を消す。"claude code" が先に当たれば "claude" は数えない
+_KEYWORDS = [
+    (_kw_pattern(kw), key)
+    for kw, key in sorted(((kw, key) for key, _, kws in GENRES for kw in kws), key=lambda x: -len(x[0]))
 ]
+
+
+def _score(text: str, weight: int, scores: dict[str, int]) -> None:
+    for pattern, key in _KEYWORDS:
+        text, n = pattern.subn(" ", text)
+        if n:
+            scores[key] = scores.get(key, 0) + weight
 
 
 def classify_tags(title: str, desc: str = "") -> list[str]:
-    """タイトル+説明文からマッチする全タグを返す（複数タグ対応）"""
-    text = (title + " " + desc).lower()
-    tags: list[str] = []
-    for tag_key, keywords in _TAG_RULES:
-        if tag_key == "ai":
-            has_direct = any(k in text for k in AI_KEYWORDS)
-            has_combo  = any(k in text for k in AI_COMBO_KEYWORDS) and has_direct
-            if has_direct or has_combo:
-                tags.append("ai")
-        elif any(k in text for k in keywords):
-            tags.append(tag_key)
-    return tags or ["other"]  # 未分類は「その他」
+    """タイトル+説明文から分野を1つ決めて [分野] で返す"""
+    scores: dict[str, int] = {}
+    _score(title.lower(), 3, scores)
+    _score(desc.lower(), 1, scores)
+    if not scores:
+        return ["other"]
+    return [max(scores, key=lambda k: (scores[k], -_GENRE_ORDER[k]))]
 
 
 def tag_spans(tag_keys: list[str]) -> str:
-    """複数タグをスパンHTML文字列に変換"""
-    parts = []
-    for k in tag_keys:
-        label, cls = TAG_LABELS.get(k, ("Other", "tag-other"))
-        parts.append(f'<span class="tag {cls}">{label}</span>')
-    return " ".join(parts)
+    return " ".join(f'<span class="tag tag-{k}">{GENRE_LABELS.get(k, "その他")}</span>' for k in tag_keys)
 
 
 # --- HTTP セッション ---
@@ -693,29 +632,24 @@ def collect_slides() -> list[dict]:
 # --- Markdown ---
 CSS = """<style>
 .tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
-.tag-agent { color: #fff; background: #66bb6a; }
-.tag-ai    { color: #fff; background: #ffa726; }
-.tag-ml    { color: #fff; background: #ab47bc; }
-.tag-cv    { color: #fff; background: #42a5f5; }
-.tag-research { color: #fff; background: #5c6bc0; }
-.tag-sec   { color: #fff; background: #ef5350; }
-.tag-poem  { color: #fff; background: #ec407a; }
-.tag-eco   { color: #fff; background: #ffca28; }
-.tag-front { color: #fff; background: #26c6da; }
-.tag-back  { color: #fff; background: #a1887f; }
-.tag-cloud { color: #fff; background: #29b6f6; }
-.tag-lang  { color: #fff; background: #ce93d8; }
-.tag-git   { color: #fff; background: #78909c; }
-.tag-pkg   { color: #fff; background: #f06292; }
-.tag-oss   { color: #fff; background: #9ccc65; }
-.tag-dev   { color: #fff; background: #4db6ac; }
-.tag-other { color: #fff; background: #bdbdbd; }
-.filter-bar { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 1rem; }
+.tag-sec    { color: #fff; background: #ef5350; }
+.tag-agent  { color: #fff; background: #66bb6a; }
+.tag-llm    { color: #fff; background: #ffa726; }
+.tag-ml     { color: #fff; background: #ab47bc; }
+.tag-infra  { color: #fff; background: #29b6f6; }
+.tag-web    { color: #fff; background: #26c6da; }
+.tag-tools  { color: #fff; background: #78909c; }
+.tag-career { color: #fff; background: #ec407a; }
+.tag-biz    { color: #fff; background: #a1887f; }
+.tag-other  { color: #fff; background: #bdbdbd; }
+.src { font-size: 0.7rem; font-weight: 700; color: #666; border: 1px solid #ccc; border-radius: 3px; padding: 0 5px; }
+.filter-bar { display: none; gap: 5px; flex-wrap: wrap; margin-bottom: 1rem; }
 .filter-btn { padding: 3px 10px; border: 1px solid #ccc; border-radius: 20px; cursor: pointer;
   font-size: 0.75rem; font-weight: 700; background: #fff; color: #444; }
 .filter-btn.on { background: #333; color: #fff; border-color: #333; }
-.filter-btn.on.f-new { background: #d32f2f; border-color: #d32f2f; }
 .filter-btn.empty { opacity: 0.35; }
+.sort-btn.new-toggle.on { background: #d32f2f; color: #fff; border-color: #d32f2f; }
+.new-divider { font-size: 0.75rem; color: #888; text-align: center; padding: 10px 0 4px; border-bottom: 1px dashed #ccc; }
 .tab-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .tab-btn { padding: 6px 14px; border: none; border-radius: 20px; cursor: pointer;
   font-size: 0.85rem; font-weight: 700; background: #e8e8e8; color: #444; transition: background 0.15s; }
@@ -747,63 +681,88 @@ TAB_NAV = """<div class="tab-nav">
   <button class="tab-btn" onclick="switchTab('blog',this)">Blog</button>
   <button class="tab-btn" onclick="switchTab('hn',this)">HN</button>
   <button class="tab-btn" onclick="switchTab('slides',this)">Slides</button>
+  <button class="tab-btn" onclick="switchTab('all',this)">ALL</button>
 </div>
 <div class="sort-bar">
-  <button id="sort-latest" class="sort-btn active" onclick="setSort('latest',this)">Latest</button>
-  <button id="sort-hotness" class="sort-btn" onclick="setSort('hotness',this)">Hotness</button>
+  <button id="sort-latest" class="sort-btn active" data-sort="latest" onclick="setSort('latest',this)">Latest</button>
+  <button id="sort-hotness" class="sort-btn" data-sort="hotness" onclick="setSort('hotness',this)">Hotness</button>
+  <button id="toggle-new" class="sort-btn new-toggle" onclick="toggleNew(this)">NEW <span class="cnt"></span></button>
 </div>"""
 
+
 def build_filter_bar(articles: list[dict]) -> str:
-    """NEW + 記事に出現するタグのトグル。件数はJSでタブごとに更新する"""
+    """ALLタブ用の分野トグル。件数はJSで更新する"""
     present = {t for a in articles for t in a.get("tags", [])}
-    buttons = ['  <button class="filter-btn f-new" data-tag="new" onclick="toggleFilter(this)">NEW <span class="cnt"></span></button>']
-    for key, (label, _) in TAG_LABELS.items():
-        if key in present:
-            buttons.append(f'  <button class="filter-btn" data-tag="{key}" onclick="toggleFilter(this)">{label} <span class="cnt"></span></button>')
+    buttons = [
+        f'  <button class="filter-btn" data-tag="{key}" onclick="toggleGenre(this)">{label} <span class="cnt"></span></button>'
+        for key, label in GENRE_LABELS.items() if key in present
+    ]
     return '<div class="filter-bar">\n' + "\n".join(buttons) + "\n</div>"
 
 
 SWITCH_JS = """<script>
 let _sort = 'latest';
-const _filters = new Set();
+let _onlyNew = false;
+const _genres = new Set();
+const isNew = it => (it.dataset.tags || '').split(' ').includes('new');
 
-function toggleFilter(btn) {
-  const tag = btn.dataset.tag;
-  if (_filters.has(tag)) _filters.delete(tag); else _filters.add(tag);
-  btn.classList.toggle('on', _filters.has(tag));
+function toggleNew(btn) {
+  _onlyNew = !_onlyNew;
+  btn.classList.toggle('on', _onlyNew);
   applyFilter();
 }
 
-// NEW は AND、それ以外のタグ同士は OR で絞り込む
+function toggleGenre(btn) {
+  const g = btn.dataset.tag;
+  if (_genres.has(g)) _genres.delete(g); else _genres.add(g);
+  btn.classList.toggle('on', _genres.has(g));
+  applyFilter();
+}
+
+// NEW と分野は AND、分野同士は OR。分野の絞り込みは ALL タブだけに効かせる
 function applyFilter() {
-  const needNew = _filters.has('new');
-  const topics = [..._filters].filter(t => t !== 'new');
   document.querySelectorAll('.item').forEach(it => {
     const tags = (it.dataset.tags || '').split(' ');
-    const ok = (!needNew || tags.includes('new')) && (topics.length === 0 || topics.some(t => tags.includes(t)));
+    const inAll = it.parentElement.id === 'tab-all';
+    const ok = (!_onlyNew || tags.includes('new'))
+      && (!inAll || _genres.size === 0 || [..._genres].some(g => tags.includes(g)));
     it.style.display = ok ? '' : 'none';
   });
   const pane = document.querySelector('.tab-pane.active');
-  if (!pane) return;
+  document.querySelector('#toggle-new .cnt').textContent = pane.querySelectorAll('.item[data-tags~="new"]').length;
+  const all = document.getElementById('tab-all');
   document.querySelectorAll('.filter-btn').forEach(b => {
-    const n = pane.querySelectorAll('.item[data-tags~="' + b.dataset.tag + '"]').length;
+    const sel = '.item[data-tags~="' + b.dataset.tag + '"]' + (_onlyNew ? '[data-tags~="new"]' : '');
+    const n = all.querySelectorAll(sel).length;
     b.querySelector('.cnt').textContent = n;
     b.classList.toggle('empty', n === 0);
   });
+  const div = document.getElementById('new-divider');
+  div.style.display = (!_onlyNew && div.dataset.boundary === '1') ? '' : 'none';
 }
 
+// ALL は NEW を先頭に並べ、NEW とそれ以外の境目に区切り線を置く
 function sortPane(pane, mode) {
+  const all = pane.id === 'tab-all';
   const items = Array.from(pane.querySelectorAll('.item'));
-  items.sort((a, b) => mode === 'latest'
-    ? (b.dataset.date || '').localeCompare(a.dataset.date || '')
-    : parseInt(b.dataset.count || '0') - parseInt(a.dataset.count || '0')
-  );
+  items.sort((a, b) => {
+    if (all && isNew(a) !== isNew(b)) return isNew(a) ? -1 : 1;
+    return mode === 'latest'
+      ? (b.dataset.date || '').localeCompare(a.dataset.date || '')
+      : parseInt(b.dataset.count || '0') - parseInt(a.dataset.count || '0');
+  });
   items.forEach(item => pane.appendChild(item));
+  if (all) {
+    const div = document.getElementById('new-divider');
+    const first = items.find(it => !isNew(it));
+    div.dataset.boundary = (first && items.some(isNew)) ? '1' : '0';
+    if (first) pane.insertBefore(div, first);
+  }
 }
 
 function setSort(mode, btn) {
   _sort = mode;
-  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.sort-btn[data-sort]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const active = document.querySelector('.tab-pane.active');
   if (active) sortPane(active, mode);
@@ -815,23 +774,21 @@ function switchTab(id, btn) {
   const pane = document.getElementById('tab-' + id);
   pane.classList.add('active');
   btn.classList.add('active');
-  const sortBar = document.querySelector('.sort-bar');
   const btnL = document.getElementById('sort-latest');
   const btnH = document.getElementById('sort-hotness');
-  const crS = document.getElementById('credit-slides');
-  crS.style.display = id === 'slides' ? '' : 'none';
+  document.getElementById('credit-slides').style.display = id === 'slides' ? '' : 'none';
+  document.querySelector('.filter-bar').style.display = id === 'all' ? 'flex' : 'none';
   if (id === 'slides') {
-    sortBar.style.display = '';
-    btnL.style.display = ''; btnH.style.display = 'none';
+    btnH.style.display = 'none';
     setSort('latest', btnL);
   } else {
-    sortBar.style.display = '';
-    btnL.style.display = ''; btnH.style.display = '';
+    btnH.style.display = '';
     sortPane(pane, _sort);
   }
   applyFilter();
 }
 
+sortPane(document.getElementById('tab-all'), _sort);
 applyFilter();
 </script>"""
 
@@ -858,7 +815,7 @@ def safe_href(url: str) -> str:
 
 
 def data_tags(a: dict) -> str:
-    return " ".join(a.get("tags", ["dev"]) + (["new"] if a.get("is_new") else []))
+    return " ".join(a.get("tags", ["other"]) + (["new"] if a.get("is_new") else []))
 
 
 def load_previous_urls(today: str) -> set[str]:
@@ -871,60 +828,64 @@ def load_previous_urls(today: str) -> set[str]:
     return set()
 
 
-def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_key: str) -> list[str]:
+def render_pane(tab_id: str, items: list[list[str]]) -> list[str]:
     active = " active" if tab_id == "zenn" else ""
-    # デフォルト: 最新順
-    sorted_articles = sorted(articles, key=lambda a: a.get("date", ""), reverse=True)
     lines = [f'<div id="tab-{tab_id}" class="tab-pane{active}">']
-    for a in sorted_articles:
-        title  = esc(a["title"])
-        url    = safe_href(a["url"])
-        date   = a.get("date", "")[5:10]
-        count  = a["meta"].get(count_key, 0)
-        author = esc(a["meta"].get("author", ""))
-        ts     = tag_spans(a.get("tags", ["dev"]))
-        count_str  = f"{count_icon} {count}" if (count_icon and count) else ""
-        author_str = f"@{author}" if author else ""
-        meta_parts = [p for p in [date, count_str, author_str] if p] + [ts]
+    for item in items:
+        lines += item
+    if tab_id == "all":
+        lines.append('<div id="new-divider" class="new-divider">ここから前回までの記事</div>')
+    lines.append("</div>")
+    return lines
+
+
+def standard_item(a: dict, count_icon: str, count_key: str, source: str = "") -> list[str]:
+    title  = esc(a["title"])
+    url    = safe_href(a["url"])
+    date   = a.get("date", "")[5:10]
+    count  = a["meta"].get(count_key, 0)
+    author = esc(a["meta"].get("author", ""))
+    ts     = tag_spans(a.get("tags", ["other"]))
+    count_str  = f"{count_icon} {count}" if (count_icon and count) else ""
+    author_str = f"@{author}" if author else ""
+    src_str    = f'<span class="src">{source}</span>' if source else ""
+    meta_parts = [p for p in [src_str, date, count_str, author_str] if p] + [ts]
+    return [
+        f'<div class="item" data-date="{a.get("date","")}" data-count="{count}" data-tags="{data_tags(a)}">',
+        f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
+        f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
+        "</div>",
+    ]
+
+
+def hn_item(a: dict, source: str = "") -> list[str]:
+    title    = esc(a["title"])
+    title_ja = esc(a["meta"].get("title_ja", ""))
+    url      = safe_href(a["url"])
+    pts      = a["meta"].get("points", 0)
+    cmts     = a["meta"].get("comments", 0)
+    date     = a.get("date", "")[5:10]
+    ts       = tag_spans(a.get("tags", ["other"]))
+    src_str  = f'<span class="src">{source}</span>' if source else ""
+    meta_parts = [p for p in [src_str, date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
+    lines = [
+        f'<div class="item" data-date="{a.get("date","")}" data-count="{pts}" data-tags="{data_tags(a)}">',
+        f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
+        f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
+    ]
+    if title_ja:
         lines += [
-            f'<div class="item" data-date="{a.get("date","")}" data-count="{count}" data-tags="{data_tags(a)}">',
-            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
-            f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
-            "</div>",
+            "  <details>",
+            f'    <summary>タイトルの日本語訳</summary>',
+            f'    <blockquote>{title_ja}</blockquote>',
+            "  </details>",
         ]
     lines.append("</div>")
     return lines
 
 
-def render_hn(articles: list[dict]) -> list[str]:
-    # デフォルト: 最新順
-    sorted_articles = sorted(articles, key=lambda a: a.get("date", ""), reverse=True)
-    lines = ['<div id="tab-hn" class="tab-pane">']
-    for a in sorted_articles:
-        title    = esc(a["title"])
-        title_ja = esc(a["meta"].get("title_ja", ""))
-        url      = safe_href(a["url"])
-        hn_url   = safe_href(a["meta"].get("hn_url", ""))
-        pts      = a["meta"].get("points", 0)
-        cmts     = a["meta"].get("comments", 0)
-        date     = a.get("date", "")[5:10]
-        ts       = tag_spans(a.get("tags", ["dev"]))
-        meta_parts = [p for p in [date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
-        lines += [
-            f'<div class="item" data-date="{a.get("date","")}" data-count="{pts}" data-tags="{data_tags(a)}">',
-            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
-            f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
-        ]
-        if title_ja:
-            lines += [
-                "  <details>",
-                f'    <summary>タイトルの日本語訳</summary>',
-                f'    <blockquote>{title_ja}</blockquote>',
-                "  </details>",
-            ]
-        lines.append("</div>")
-    lines.append("</div>")
-    return lines
+def by_latest(articles: list[dict]) -> list[dict]:
+    return sorted(articles, key=lambda a: a.get("date", ""), reverse=True)
 
 
 def main():
@@ -1010,17 +971,18 @@ def main():
         "",
     ]
 
-    lines += render_standard(zenn_articles,   "zenn",   "❤️",  "likes")
-    lines += [""]
-    lines += render_standard(qiita_articles,  "qiita",  "👍",  "likes")
-    lines += [""]
-    lines += render_standard(hatena_articles, "hatena", "🔖", "bookmarks")
-    lines += [""]
-    lines += render_standard(blog_articles,   "blog",  "🔖", "bookmarks")
-    lines += [""]
-    lines += render_hn(hn_articles)
-    lines += [""]
-    lines += render_standard(slides_articles, "slides", "", "")
+    sources = [
+        ("zenn",   "Zenn",   zenn_articles,   lambda a, src="": standard_item(a, "❤️", "likes", src)),
+        ("qiita",  "Qiita",  qiita_articles,  lambda a, src="": standard_item(a, "👍", "likes", src)),
+        ("hatena", "はてな", hatena_articles, lambda a, src="": standard_item(a, "🔖", "bookmarks", src)),
+        ("blog",   "Blog",   blog_articles,   lambda a, src="": standard_item(a, "🔖", "bookmarks", src)),
+        ("hn",     "HN",     hn_articles,     hn_item),
+        ("slides", "Slides", slides_articles, lambda a, src="": standard_item(a, "", "", src)),
+    ]
+    for tab_id, _, arts, item_fn in sources:
+        lines += render_pane(tab_id, [item_fn(a) for a in by_latest(arts)])
+        lines += [""]
+    lines += render_pane("all", [item_fn(a, label) for _, label, arts, item_fn in sources for a in by_latest(arts)])
     lines += [
         "",
         '<div id="credit-slides" class="item-meta" style="margin-top:12px;display:none;">',
