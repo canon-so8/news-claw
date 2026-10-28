@@ -67,8 +67,6 @@ TAB_LABELS = [
     ("nlp", "NLP"), ("llm", "LLM"), ("audio", "Audio"), ("quant", "Quant"),
 ]
 
-JA_CHAR = re.compile(r"[぀-ヿ一-鿿]")
-
 
 def build_tab_nav(papers: list[dict]) -> str:
     buttons = [f'  <button class="tab-btn active" onclick="filterTag(\'all\',this)">ALL({len(papers)})</button>']
@@ -127,14 +125,38 @@ def fetch_papers(date_str: str) -> list[dict]:
     return []
 
 
-# (訳を入れるキー, 原文のキー, 記事HTMLから訳を拾う正規表現, 1リクエストあたりの件数)
-TRANSLATE_FIELDS = [
-    ("abstract_ja", "summary", re.compile(r'<blockquote class="abstract-ja">(.*?)</blockquote>'), 5),
-]
+ELI5_KEYS = [("problem", "どんな問題？"), ("idea", "どうやった？"), ("impact", "何がうれしい？")]
+ELI5_CHUNK = 5
+
+ELI5_PROMPT = """あなたは機械学習の論文を、専門外のエンジニアにも一読で分かるように紹介する解説者です。
+下のJSON配列の各要素（title と abstract）について、ELI5（5歳児にも分かるくらい噛み砕く）の考え方で、次の3項目を日本語で書いてください。
+
+- problem: どんな困りごとを解決したいのか
+- idea: どうやって解決したのか。できるだけ身近なもののたとえを使う（無理なたとえは不要）
+- impact: 結果として何がうれしいのか。abstractに数値があれば1つだけ入れる
+
+書き方のルール:
+- 各項目は1文、60字以内。「〜する」「〜だ」の常体で書く
+- 専門用語は必要なときだけ使い、初出で（）に一言の説明を付ける。例: ファインチューニング（学習済みモデルの追加学習）
+- モデル名・手法名・データセット名は英語のまま
+- abstractに書かれていないことは書かない。誇張しない
+
+入力と同じ順番・同じ件数で返すこと。
+
+"""
+
+ELI5_SCHEMA = {
+    "type": "ARRAY",
+    "items": {
+        "type": "OBJECT",
+        "properties": {k: {"type": "STRING"} for k, _ in ELI5_KEYS},
+        "required": [k for k, _ in ELI5_KEYS],
+    },
+}
 
 
 def load_previous(today: str) -> tuple[set[str], dict[str, dict[str, str]]]:
-    """前日以前の最新記事の論文ID（NEW判定用）と、直近記事の日本語訳キャッシュを返す"""
+    """前日以前の最新記事の論文ID（NEW判定用）と、直近記事のELI5要約キャッシュを返す"""
     files = sorted(OUTPUT_DIR.glob("*-neta-trend-hf.md"))
     prev_ids: set[str] = set()
     for f in reversed(files):
@@ -142,33 +164,32 @@ def load_previous(today: str) -> tuple[set[str], dict[str, dict[str, str]]]:
             prev_ids = set(re.findall(r'arxiv\.org/abs/([0-9.]+)"', f.read_text(encoding="utf-8")))
             break
 
-    # 同日の再実行でも翻訳し直さないよう、日付を問わず直近数件から拾う
+    # 同日の再実行でも要約し直さないよう、日付を問わず直近数件から拾う
     cache: dict[str, dict[str, str]] = {}
     for f in files[-5:]:
         for block in f.read_text(encoding="utf-8").split('<div class="paper"')[1:]:
             m_id = re.search(r'arxiv\.org/abs/([0-9.]+)"', block)
-            if not m_id:
-                continue
-            for key, _, pattern, _ in TRANSLATE_FIELDS:
-                m = pattern.search(block)
-                if m and JA_CHAR.search(m.group(1)):
-                    cache.setdefault(m_id.group(1), {})[key] = unescape(m.group(1))
+            m_eli5 = re.search(r'<details data-eli5="([^"]*)">', block)
+            if m_id and m_eli5:
+                try:
+                    cache[m_id.group(1)] = json.loads(unescape(m_eli5.group(1)))
+                except json.JSONDecodeError:
+                    pass
     return prev_ids, cache
 
 
-def translate_gemini(texts: list[str]) -> list[str] | None:
-    """英文リストを1回のAPI呼び出しで日本語化。失敗時は None"""
-    if not GEMINI_API_KEY or not texts:
+def summarize_gemini(papers: list[dict]) -> list[dict[str, str]] | None:
+    """論文リストを1回のAPI呼び出しでELI5要約。失敗時は None"""
+    if not GEMINI_API_KEY or not papers:
         return None
-    prompt = (
-        "Translate each English text in the JSON array below into natural Japanese "
-        "for ML researchers. Keep technical terms and model names in English where natural. "
-        "Return a JSON array of strings in the same order and of the same length.\n\n"
-        + json.dumps(texts, ensure_ascii=False)
-    )
+    items = [{"title": p["title"], "abstract": p["summary"]} for p in papers]
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+        "contents": [{"parts": [{"text": ELI5_PROMPT + json.dumps(items, ensure_ascii=False)}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "responseMimeType": "application/json",
+            "responseSchema": ELI5_SCHEMA,
+        },
     }
     for attempt in range(3):
         try:
@@ -176,8 +197,9 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
             if resp.status_code == 200:
                 text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                 result = json.loads(text)
-                if isinstance(result, list) and len(result) == len(texts) and all(isinstance(s, str) for s in result):
-                    return result
+                if (isinstance(result, list) and len(result) == len(papers)
+                        and all(all(str(r.get(k, "")).strip() for k, _ in ELI5_KEYS) for r in result)):
+                    return [{k: " ".join(str(r[k]).split()) for k, _ in ELI5_KEYS} for r in result]
                 print(f"  [WARN] Gemini 応答の形式不一致: {text[:200]}", file=sys.stderr)
             elif resp.status_code in (429, 503) and attempt < 2:
                 wait = (attempt + 1) * 30
@@ -195,28 +217,22 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
     return None
 
 
-def translate_summaries(papers: list[dict], cache: dict[str, dict[str, str]]) -> None:
-    """abstractを日本語化。キャッシュにないものだけ Gemini に送り、失敗時は英語のまま"""
-    requested = False
-    for key, src, _, chunk in TRANSLATE_FIELDS:
-        targets = []
-        for p in papers:
-            cached = cache.get(p["id"], {}).get(key)
-            p[key] = cached or p[src]
-            if not cached and p[src]:
-                targets.append(p)
-        done = 0
-        for i in range(0, len(targets), chunk):
-            if requested:
-                time.sleep(15)  # 無料枠のレートリミット対策
-            requested = True
-            part = targets[i:i + chunk]
-            for p, ja in zip(part, translate_gemini([p[src] for p in part]) or []):
-                if ja.strip():
-                    p[key] = ja.strip()
-                    done += 1
-        cached = sum(bool(cache.get(p["id"], {}).get(key)) for p in papers)
-        print(f"{key} 翻訳: {done}/{len(targets)} 件（キャッシュ {cached} 件）")
+def summarize_papers(papers: list[dict], cache: dict[str, dict[str, str]]) -> None:
+    """キャッシュにない論文だけ Gemini でELI5要約。失敗した論文は英語abstractのまま"""
+    targets = []
+    for p in papers:
+        p["eli5"] = cache.get(p["id"])
+        if not p["eli5"] and p["summary"]:
+            targets.append(p)
+    done = 0
+    for i in range(0, len(targets), ELI5_CHUNK):
+        if i:
+            time.sleep(15)  # 無料枠のレートリミット対策
+        part = targets[i:i + ELI5_CHUNK]
+        for p, r in zip(part, summarize_gemini(part) or []):
+            p["eli5"] = r
+            done += 1
+    print(f"ELI5要約: {done}/{len(targets)} 件（キャッシュ {len(papers) - len(targets)} 件）")
 
 
 def main():
@@ -277,7 +293,7 @@ def main():
         if p["is_new"]:
             p["tags"].append("new")
 
-    translate_summaries(filtered, summary_cache)
+    summarize_papers(filtered, summary_cache)
 
     # Markdown生成
 
@@ -323,12 +339,20 @@ def main():
             f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date[5:]} · {author_esc}{github_link_html}</p>',
         ]
         # 改行が入るとkramdownがHTMLブロックを途中で切るので1行にする
-        abstract_ja = escape(" ".join(p.get("abstract_ja", "").split()))
-        if abstract_ja:
+        if p["eli5"]:
+            eli5_attr = escape(json.dumps(p["eli5"], ensure_ascii=False), quote=True)
+            body = "<br>".join(f'<b>{label}</b> {escape(p["eli5"][k])}' for k, label in ELI5_KEYS)
+            detail_lines += [
+                f'<details data-eli5="{eli5_attr}">',
+                '<summary>要約を読む</summary>',
+                f'<blockquote>{body}</blockquote>',
+                '</details>',
+            ]
+        elif p["summary"]:
             detail_lines += [
                 '<details>',
-                '<summary>要約を読む</summary>',
-                f'<blockquote class="abstract-ja">{abstract_ja}</blockquote>',
+                '<summary>Abstract（英語）</summary>',
+                f'<blockquote>{escape(p["summary"])}</blockquote>',
                 '</details>',
             ]
         detail_lines += ["</div>", ""]
