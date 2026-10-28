@@ -710,7 +710,6 @@ CSS = """<style>
 .tag-oss   { color: #fff; background: #9ccc65; }
 .tag-dev   { color: #fff; background: #4db6ac; }
 .tag-other { color: #fff; background: #bdbdbd; }
-.tag-new   { color: #fff; background: #d32f2f; }
 .filter-bar { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 1rem; }
 .filter-btn { padding: 3px 10px; border: 1px solid #ccc; border-radius: 20px; cursor: pointer;
   font-size: 0.75rem; font-weight: 700; background: #fff; color: #444; }
@@ -862,10 +861,6 @@ def data_tags(a: dict) -> str:
     return " ".join(a.get("tags", ["dev"]) + (["new"] if a.get("is_new") else []))
 
 
-def new_badge(a: dict) -> str:
-    return '<span class="tag tag-new">NEW</span> ' if a.get("is_new") else ""
-
-
 def load_previous_urls(today: str) -> set[str]:
     """前日以前の最新記事に載っていたURL（UTM除去済み）。NEW判定用"""
     for f in sorted(OUTPUT_DIR.glob("*-neta-trend.md"), reverse=True):
@@ -893,7 +888,7 @@ def render_standard(articles: list[dict], tab_id: str, count_icon: str, count_ke
         meta_parts = [p for p in [date, count_str, author_str] if p] + [ts]
         lines += [
             f'<div class="item" data-date="{a.get("date","")}" data-count="{count}" data-tags="{data_tags(a)}">',
-            f'  <div class="item-title">{new_badge(a)}<a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
+            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
             f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
             "</div>",
         ]
@@ -917,7 +912,7 @@ def render_hn(articles: list[dict]) -> list[str]:
         meta_parts = [p for p in [date, f"🔥 {pts}" if pts else "", f"💬 {cmts}" if cmts else ""] if p] + [ts]
         lines += [
             f'<div class="item" data-date="{a.get("date","")}" data-count="{pts}" data-tags="{data_tags(a)}">',
-            f'  <div class="item-title">{new_badge(a)}<a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
+            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></div>',
             f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
         ]
         if title_ja:
