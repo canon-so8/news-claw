@@ -58,6 +58,9 @@ CSS = """<style>
 .paper { margin-bottom: 0; border-top: 1px solid rgba(128,128,128,0.35); padding-top: 1.2rem; margin-top: 0.8rem; }
 .paper:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 .summary-ja { font-size: 0.85rem; line-height: 1.6; color: #999; margin-top: -4px; }
+details { margin-top: -6px; }
+details summary { cursor: pointer; font-size: 0.82rem; color: #888; }
+details blockquote { font-size: 0.85rem; line-height: 1.7; margin: 8px 0 0 0; padding: 8px 12px; color: #bbb; border-left: 3px solid #555; background: transparent; }
 </style>"""
 
 TAB_LABELS = [
@@ -125,8 +128,15 @@ def fetch_papers(date_str: str) -> list[dict]:
     return []
 
 
-def load_previous(today: str) -> tuple[set[str], dict[str, str]]:
-    """前日以前の最新記事の論文ID（NEW判定用）と、直近記事の日本語要約キャッシュを返す"""
+# (訳を入れるキー, 原文のキー, 記事HTMLから訳を拾う正規表現, 1リクエストあたりの件数)
+TRANSLATE_FIELDS = [
+    ("summary_ja", "ai_summary", re.compile(r'<p class="summary-ja">(.*?)</p>'), 30),
+    ("abstract_ja", "summary", re.compile(r'<blockquote class="abstract-ja">(.*?)</blockquote>'), 10),
+]
+
+
+def load_previous(today: str) -> tuple[set[str], dict[str, dict[str, str]]]:
+    """前日以前の最新記事の論文ID（NEW判定用）と、直近記事の日本語訳キャッシュを返す"""
     files = sorted(OUTPUT_DIR.glob("*-neta-trend-hf.md"))
     prev_ids: set[str] = set()
     for f in reversed(files):
@@ -135,13 +145,16 @@ def load_previous(today: str) -> tuple[set[str], dict[str, str]]:
             break
 
     # 同日の再実行でも翻訳し直さないよう、日付を問わず直近数件から拾う
-    cache: dict[str, str] = {}
+    cache: dict[str, dict[str, str]] = {}
     for f in files[-5:]:
         for block in f.read_text(encoding="utf-8").split('<div class="paper"')[1:]:
             m_id = re.search(r'arxiv\.org/abs/([0-9.]+)"', block)
-            m_sum = re.search(r'<p class="summary-ja">(.*?)</p>', block)
-            if m_id and m_sum and JA_CHAR.search(m_sum.group(1)):
-                cache[m_id.group(1)] = unescape(m_sum.group(1))
+            if not m_id:
+                continue
+            for key, _, pattern, _ in TRANSLATE_FIELDS:
+                m = pattern.search(block)
+                if m and JA_CHAR.search(m.group(1)):
+                    cache.setdefault(m_id.group(1), {})[key] = unescape(m.group(1))
     return prev_ids, cache
 
 
@@ -150,7 +163,7 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
     if not GEMINI_API_KEY or not texts:
         return None
     prompt = (
-        "Translate each English sentence in the JSON array below into natural, concise Japanese "
+        "Translate each English text in the JSON array below into natural Japanese "
         "for ML researchers. Keep technical terms and model names in English where natural. "
         "Return a JSON array of strings in the same order and of the same length.\n\n"
         + json.dumps(texts, ensure_ascii=False)
@@ -161,7 +174,7 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
     }
     for attempt in range(3):
         try:
-            resp = requests.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=120)
+            resp = requests.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=180)
             if resp.status_code == 200:
                 text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                 result = json.loads(text)
@@ -181,18 +194,27 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
     return None
 
 
-def translate_summaries(papers: list[dict], cache: dict[str, str]) -> None:
-    """ai_summary を日本語化。キャッシュにないものだけ Gemini に送り、失敗時は英語のまま"""
-    targets = []
-    for p in papers:
-        p["summary_ja"] = cache.get(p["id"], p["ai_summary"])
-        if p["id"] not in cache and p["ai_summary"]:
-            targets.append(p)
-    result = translate_gemini([p["ai_summary"] for p in targets]) or []
-    for p, ja in zip(targets, result):
-        if ja.strip():
-            p["summary_ja"] = ja.strip()
-    print(f"要約翻訳: {len(result)}/{len(targets)} 件（キャッシュ {sum(p['id'] in cache for p in papers)} 件）")
+def translate_summaries(papers: list[dict], cache: dict[str, dict[str, str]]) -> None:
+    """1行要約とabstractを日本語化。キャッシュにないものだけ Gemini に送り、失敗時は英語のまま"""
+    requested = False
+    for key, src, _, chunk in TRANSLATE_FIELDS:
+        targets = []
+        for p in papers:
+            cached = cache.get(p["id"], {}).get(key)
+            p[key] = cached or p[src]
+            if not cached and p[src]:
+                targets.append(p)
+        done = 0
+        for i in range(0, len(targets), chunk):
+            if requested:
+                time.sleep(15)  # 無料枠のレートリミット対策
+            requested = True
+            part = targets[i:i + chunk]
+            for p, ja in zip(part, translate_gemini([p[src] for p in part]) or []):
+                if ja.strip():
+                    p[key] = ja.strip()
+                    done += 1
+        print(f"{key} 翻訳: {done}/{len(targets)} 件（キャッシュ {len(papers) - len(targets)} 件）")
 
 
 def main():
@@ -220,7 +242,7 @@ def main():
             all_papers.append({
                 "id": pid,
                 "title": paper.get("title", ""),
-                "summary": paper.get("summary", ""),
+                "summary": " ".join((paper.get("summary") or "").split()),
                 "upvotes": paper.get("upvotes", 0) or 0,
                 "github_stars": paper.get("githubStars", 0) or 0,
                 "github_repo": paper.get("githubRepo"),
@@ -302,6 +324,15 @@ def main():
         ]
         if summary_ja:
             detail_lines.append(f'<p class="summary-ja">{summary_ja}</p>')
+        # 改行が入るとkramdownがHTMLブロックを途中で切るので1行にする
+        abstract_ja = escape(" ".join(p.get("abstract_ja", "").split()))
+        if abstract_ja:
+            detail_lines += [
+                '<details>',
+                '<summary>アブストラクトを読む</summary>',
+                f'<blockquote class="abstract-ja">{abstract_ja}</blockquote>',
+                '</details>',
+            ]
         detail_lines += ["</div>", ""]
         lines += detail_lines
 
