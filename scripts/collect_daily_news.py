@@ -49,7 +49,7 @@ ATOM   = "http://www.w3.org/2005/Atom"
 RDF    = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 HATENA = "http://www.hatena.ne.jp/info/xmlns#"
 
-# --- 分野判定（1記事1分野。タイトル一致3点・説明文一致1点で最高点の分野、同点は GENRES の順）---
+# --- 分野判定（1記事1分野。タイトルのキーワード一致数が最多の分野、同点は GENRES の順）---
 GENRES: list[tuple[str, str, list[str]]] = [
     ("sec", "セキュリティ", [
         "セキュリティ", "security", "脆弱性", "vulnerability", "cve", "サイバー", "cyber",
@@ -61,7 +61,9 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "ペネトレーション", "pentest", "ゼロトラスト", "zero trust", "暗号化", "encryption",
         "証明書", "tls", "ssl", "権限", "active directory", "セキュア", "secure",
         "プライバシー", "privacy", "ハッキング", "siem", "waf",
-        "情報漏えい", "ハッカー", "hacker", "hacked", "exploit", "pwned", "スパイ", "spy", "otp", "bypass", "credential", "脅威", "threat", "詐欺", "fraud", "scam", "スパム", "spam", "csp", "certificate authority", "不正", "被害",
+        "情報漏えい", "ハッカー", "hacker", "hacked", "exploit", "pwned", "スパイ", "spy", "otp", "bypass", "credential", "脅威", "threat", "詐欺", "fraud", "scam", "スパム", "spam", "csp", "certificate authority", "不正利用", "不正送金", "不正侵入", "被害", "penetration",
+        "php2shell", "http2shell", "パッチ適用", "緊急リリース", "緊急パッチ", "security release",
+        "threat hunting", "adversary", "ログイン", "sign-in", "サインイン", "dependabot", "advisory",
     ]),
     ("agent", "AIエージェント", [
         "aiエージェント", "ai agent", "エージェント", "agent", "agentic", "マルチエージェント",
@@ -81,7 +83,7 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "rag", "プロンプト", "prompt", "ファインチューニング", "fine-tun", "lora",
         "embedding", "埋め込み", "ベクトル検索", "vector", "チャットボット", "chatbot",
         "推論モデル", "reasoning model", "トークン",
-        "fable", "opus", "sonnet", "haiku", "vllm", "ollama", "litellm", "lfm", "kimi", "sarashina", "国産モデル", "model training",
+        "fable", "opus", "sonnet", "haiku", "vllm", "ollama", "litellm", "lfm", "kimi", "sarashina", "国産モデル", "model training", "報酬ハッキング", "reward hacking",
     ]),
     ("ml", "ML・データ", [
         "機械学習", "深層学習", "強化学習", "ニューラル", "machine learning", "deep learning",
@@ -93,7 +95,9 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "特徴量", "回帰", "時系列", "レコメンド", "推薦", "論文", "arxiv", "paper", "研究",
         "research", "量子", "quantum", "ロボット", "robot", "自動運転", "データ基盤", "etl",
         "dbt", "bigquery", "snowflake", "databricks",
-        "visual", "vision", "3d", "数学", "mathematics", "spss", "判別モデル",
+        "visual", "vision", "数学", "mathematics", "spss", "判別モデル",
+        "メタデータ", "metadata", "データ管理", "データガバナンス", "data governance", "データカタログ",
+        "データ活用", "データ分析基盤", "dbms", "dwh", "データウェアハウス", "感情分析", "ネガポジ",
     ]),
     ("infra", "インフラ・運用", [
         "aws", "gcp", "google cloud", "azure", "クラウド", "cloud", "kubernetes", "k8s",
@@ -102,7 +106,7 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "cloudflare", "vercel", "netlify", "デプロイ", "deploy", "ci/cd", "github actions",
         "監視", "monitoring", "オブザーバビリティ", "observability", "opentelemetry",
         "datadog", "new relic", "sre", "障害", "incident", "インシデント", "運用", "オンコール",
-        "ログ設計", "ログ収集", "ログ基盤", "ロギング", "nginx", "linux", "サーバー", "server", "ネットワーク", "network", "dns",
+        "ログ設計", "ログ収集", "ログ基盤", "ロギング", "nginx", "linux", "サーバー", "ネットワーク", "network", "dns",
         "cdn", "vps", "自宅サーバー", "homelab", "マイクロサービス", "microservice",
         "re:invent", "jaws-ug", "s3", "ジョブ基盤", "定期実行", "valkey", "tailscale", "ci", "本番db", "nw",
     ]),
@@ -115,7 +119,7 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "orm", "django", "rails", "laravel", "fastapi", "express.js", "spring", "wordpress",
         "flutter", "react native", "swiftui", "ios", "android", "モバイル", "mobile",
         "アプリ開発", "スマホアプリ", "webassembly", "wasm",
-        "website", "websites", "vite", "vuefes", "chromium", "v8", "canvas", "riverpod", "duckdb", "署名付きurl", "スクロール", "ゲーム", "game", "unity", "unreal", "godot", "ゲームエンジン",
+        "website", "websites", "ウェブ", "vite", "vuefes", "chromium", "v8", "canvas", "riverpod", "duckdb", "署名付きurl", "スクロール", "ゲーム", "game", "unity", "unreal", "godot", "ゲームエンジン",
     ]),
     ("tools", "言語・開発ツール", [
         "python", "javascript", "typescript", "rust", "go", "golang", "java", "kotlin",
@@ -131,7 +135,7 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "コーディング", "コンパイラ", "compiler", "アルゴリズム", "algorithm", "正規表現",
         "regex", "wsl", "dotfiles", "開発環境", "エディタ", "oss", "オープンソース",
         "open source", "個人開発", "自作",
-        "型安全", "ユーティリティ", "パターン", "ドメイン", "要件定義", "qa", "品質保証", "e2e", "スタックトレース", "ヒープ", "debugger", "デバッグ", "obsidian", "ghostty", "fzf", "ノーコード", "power automate", "sharepoint", "スプレッドシート", "excel", "ソフトウェアエンジニアリング", "software",
+        "型安全", "ユーティリティ", "パターン", "ドメインモデル", "コアドメイン", "要件定義", "qa", "品質保証", "e2e", "スタックトレース", "ヒープ", "debugger", "デバッグ", "obsidian", "ghostty", "fzf", "ノーコード", "power automate", "sharepoint", "スプレッドシート", "excel", "ソフトウェアエンジニアリング", "software", "マージ", "merge", "office",
     ]),
     ("career", "キャリア・組織", [
         "キャリア", "career", "転職", "働き方", "エンジニアとして", "新人", "新卒", "未経験",
@@ -139,12 +143,12 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "hiring", "評価制度", "1on1", "育成", "学習法", "勉強法", "勉強会", "資格", "試験",
         "マインドセット", "生き方", "ポエム", "振り返り", "属人化", "仕事術", "生産性",
         "コミュニケーション", "burnout", "燃え尽き",
-        "lt会", "登壇", "参加記", "参加レポート", "レポ", "インターン", "入社", "報連相", "読書", "アジャイル", "agile", "スクラム", "バックログ", "エンジニア歴", "シニア", "中堅", "ライティング", "advice", "pm",
+        "lt会", "登壇", "参加記", "参加レポート", "レポ", "インターン", "入社", "報連相", "読書", "アジャイル", "agile", "スクラム", "バックログ", "エンジニア歴", "シニア", "中堅", "ライティング", "advice", "pm", "退職", "労基", "技能",
     ]),
     ("biz", "業界・製品", [
         "株価", "決算", "買収", "acquisition", "資金調達", "ipo", "スタートアップ", "startup",
         "半導体", "nvidia", "tsmc", "規制", "政策", "法案", "訴訟", "lawsuit", "裁判",
-        "政府", "government", "doj", "fcc", "市場", "業界", "経済", "economy", "値上げ",
+        "政府", "government", "doj", "fcc", "市場", "業界動向", "it業界", "経済", "economy", "値上げ",
         "料金", "価格", "提供開始", "サービス開始", "サービス終了", "macbook", "iphone",
         "ipad", "imac", "censorship", "検閲",
         "gpu", "tpu", "raspberry pi", "ハードウェア", "hardware", "ガジェット", "gadget", "buyout", "buyouts", "layoff", "laid off", "レイオフ", "撤退", "上場", "経営", "penalty", "court", "shutting down",
@@ -164,24 +168,27 @@ def _kw_pattern(kw: str) -> re.Pattern:
 
 
 # 長いキーワードから順に照合して一致部分を消す。"claude code" が先に当たれば "claude" は数えない
+# どの分野の話にも出てくる語。単独なら LLM・生成AI にするが、他の分野の語があればそちらを優先する
+WEAK_KEYWORDS = {"ai", "人工知能"}
+
 _KEYWORDS = [
-    (_kw_pattern(kw), key)
+    (_kw_pattern(kw), key, 1 if kw in WEAK_KEYWORDS else 3)
     for kw, key in sorted(((kw, key) for key, _, kws in GENRES for kw in kws), key=lambda x: -len(x[0]))
 ]
 
 
-def _score(text: str, weight: int, scores: dict[str, int]) -> None:
-    for pattern, key in _KEYWORDS:
+def _score(text: str) -> dict[str, int]:
+    scores: dict[str, int] = {}
+    for pattern, key, weight in _KEYWORDS:
         text, n = pattern.subn(" ", text)
         if n:
             scores[key] = scores.get(key, 0) + weight
+    return scores
 
 
 def classify_tags(title: str, desc: str = "") -> list[str]:
-    """タイトル+説明文から分野を1つ決めて [分野] で返す"""
-    scores: dict[str, int] = {}
-    _score(title.lower(), 3, scores)
-    _score(desc.lower(), 1, scores)
+    """タイトルから分野を1つ決めて [分野] で返す。タイトルで決まらないときだけ説明文を見る"""
+    scores = _score(title.lower()) or _score(desc.lower())
     if not scores:
         return ["other"]
     return [max(scores, key=lambda k: (scores[k], -_GENRE_ORDER[k]))]
