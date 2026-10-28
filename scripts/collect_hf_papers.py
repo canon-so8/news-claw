@@ -22,6 +22,10 @@ JST = timezone(timedelta(hours=9))
 REPO_ROOT = Path(__file__).parent.parent
 OUTPUT_DIR = REPO_ROOT / "_posts" / "arxiv"
 
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
 TAGS_RULES = {
     "agent": ["agent", "agentic", "multi-agent", "tool use", "react", "workflow", "planning"],
     "llm": ["language model", "llm", "large language", "gpt", "rlhf", "rag",
@@ -141,28 +145,54 @@ def load_previous(today: str) -> tuple[set[str], dict[str, str]]:
     return prev_ids, cache
 
 
-def translate_summaries(papers: list[dict], cache: dict[str, str]) -> None:
-    """ai_summary を Google翻訳で日本語化。失敗時は英語のまま残す"""
-    from deep_translator import GoogleTranslator
-    translator = GoogleTranslator(source="en", target="ja")
-    translated = 0
-    blocked = False
-    for p in papers:
-        if p["id"] in cache:
-            p["summary_ja"] = cache[p["id"]]
-            continue
-        p["summary_ja"] = p["ai_summary"]
-        if not p["ai_summary"] or blocked:
-            continue
+def translate_gemini(texts: list[str]) -> list[str] | None:
+    """英文リストを1回のAPI呼び出しで日本語化。失敗時は None"""
+    if not GEMINI_API_KEY or not texts:
+        return None
+    prompt = (
+        "Translate each English sentence in the JSON array below into natural, concise Japanese "
+        "for ML researchers. Keep technical terms and model names in English where natural. "
+        "Return a JSON array of strings in the same order and of the same length.\n\n"
+        + json.dumps(texts, ensure_ascii=False)
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+    }
+    for attempt in range(3):
         try:
-            p["summary_ja"] = translator.translate(p["ai_summary"]) or p["ai_summary"]
-            translated += 1
-            time.sleep(1)
+            resp = requests.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=120)
+            if resp.status_code == 200:
+                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                result = json.loads(text)
+                if isinstance(result, list) and len(result) == len(texts) and all(isinstance(s, str) for s in result):
+                    return result
+                print(f"  [WARN] Gemini 応答の形式不一致: {text[:200]}", file=sys.stderr)
+            elif resp.status_code in (429, 503) and attempt < 2:
+                wait = (attempt + 1) * 30
+                print(f"  [RETRY] HTTP {resp.status_code}, {wait}秒待機...")
+                time.sleep(wait)
+                continue
+            else:
+                print(f"  [WARN] Gemini HTTP {resp.status_code}: {resp.text[:300]}", file=sys.stderr)
         except Exception as e:
-            # ブロックされた可能性が高いので以降は英語のまま
-            print(f"  翻訳失敗、以降は英語のまま ({e})", file=sys.stderr)
-            blocked = True
-    print(f"要約翻訳: {translated} 件（キャッシュ {sum(p['id'] in cache for p in papers)} 件）")
+            print(f"  [WARN] Gemini error: {e}", file=sys.stderr)
+        break
+    return None
+
+
+def translate_summaries(papers: list[dict], cache: dict[str, str]) -> None:
+    """ai_summary を日本語化。キャッシュにないものだけ Gemini に送り、失敗時は英語のまま"""
+    targets = []
+    for p in papers:
+        p["summary_ja"] = cache.get(p["id"], p["ai_summary"])
+        if p["id"] not in cache and p["ai_summary"]:
+            targets.append(p)
+    result = translate_gemini([p["ai_summary"] for p in targets]) or []
+    for p, ja in zip(targets, result):
+        if ja.strip():
+            p["summary_ja"] = ja.strip()
+    print(f"要約翻訳: {len(result)}/{len(targets)} 件（キャッシュ {sum(p['id'] in cache for p in papers)} 件）")
 
 
 def main():
