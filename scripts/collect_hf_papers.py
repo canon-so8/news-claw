@@ -23,7 +23,8 @@ REPO_ROOT = Path(__file__).parent.parent
 OUTPUT_DIR = REPO_ROOT / "_posts" / "arxiv"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-3.8-flash"
+# 普段は flash-lite（モデル一覧から最新の安定版を選ぶ）。混雑時の予備がこちら
+GEMINI_BACKUP_MODEL = "gemini-3.8-flash"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 TAGS_RULES = {
@@ -189,9 +190,9 @@ _exhausted_models: set[str] = set()
 
 
 def gemini_models() -> list[str]:
-    """メインのモデルと、混雑・枠切れ時に切り替える軽量モデル（flash-lite の最新安定版）"""
-    fallback = os.environ.get("GEMINI_FALLBACK_MODEL", "")
-    if not fallback and GEMINI_API_KEY:
+    """flash-lite の最新安定版を先頭に、混雑・枠切れ時の予備として GEMINI_BACKUP_MODEL を後ろに並べる"""
+    lite = os.environ.get("GEMINI_MODEL", "")
+    if not lite and GEMINI_API_KEY:
         try:
             resp = requests.get(f"{GEMINI_API_BASE}/models", params={"pageSize": 1000},
                                 headers={"x-goog-api-key": GEMINI_API_KEY}, timeout=30)
@@ -200,10 +201,10 @@ def gemini_models() -> list[str]:
                      if "generateContent" in m.get("supportedGenerationMethods", [])]
             lites = [n for n in names if "flash-lite" in n and not re.search(r"preview|exp|tts|image|live", n)]
             if lites:
-                fallback = max(lites, key=lambda n: [int(x) for x in re.findall(r"\d+", n)])
+                lite = max(lites, key=lambda n: [int(x) for x in re.findall(r"\d+", n)])
         except Exception as e:
             print(f"  [WARN] Gemini モデル一覧の取得に失敗: {e}", file=sys.stderr)
-    models = [GEMINI_MODEL] + ([fallback] if fallback and fallback != GEMINI_MODEL else [])
+    models = ([lite] if lite and lite != GEMINI_BACKUP_MODEL else []) + [GEMINI_BACKUP_MODEL]
     print(f"Gemini モデル: {models}")
     return models
 
