@@ -57,10 +57,9 @@ CSS = """<style>
 .tab-btn.active { background: #333; color: #fff; }
 .paper { margin-bottom: 0; border-top: 1px solid rgba(128,128,128,0.35); padding-top: 1.2rem; margin-top: 0.8rem; }
 .paper:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
-.summary-ja { font-size: 0.85rem; line-height: 1.6; color: #999; margin-top: -4px; }
 details { margin-top: -6px; }
-details summary { cursor: pointer; font-size: 0.82rem; color: #888; }
-details blockquote { font-size: 0.85rem; line-height: 1.7; margin: 8px 0 0 0; padding: 8px 12px; color: #bbb; border-left: 3px solid #555; background: transparent; }
+details summary { cursor: pointer; font-size: 0.82rem; color: #111; }
+details blockquote { font-size: 0.85rem; line-height: 1.7; margin: 8px 0 0 0; padding: 8px 12px; color: #333; border-left: 3px solid #ddd; background: transparent; }
 </style>"""
 
 TAB_LABELS = [
@@ -130,7 +129,6 @@ def fetch_papers(date_str: str) -> list[dict]:
 
 # (訳を入れるキー, 原文のキー, 記事HTMLから訳を拾う正規表現, 1リクエストあたりの件数)
 TRANSLATE_FIELDS = [
-    ("summary_ja", "ai_summary", re.compile(r'<p class="summary-ja">(.*?)</p>'), 30),
     ("abstract_ja", "summary", re.compile(r'<blockquote class="abstract-ja">(.*?)</blockquote>'), 5),
 ]
 
@@ -198,7 +196,7 @@ def translate_gemini(texts: list[str]) -> list[str] | None:
 
 
 def translate_summaries(papers: list[dict], cache: dict[str, dict[str, str]]) -> None:
-    """1行要約とabstractを日本語化。キャッシュにないものだけ Gemini に送り、失敗時は英語のまま"""
+    """abstractを日本語化。キャッシュにないものだけ Gemini に送り、失敗時は英語のまま"""
     requested = False
     for key, src, _, chunk in TRANSLATE_FIELDS:
         targets = []
@@ -253,7 +251,6 @@ def main():
                 "hf_date": d,
                 "first_author": ((paper.get("authors") or [{}])[0]).get("name", ""),
                 "ai_keywords": paper.get("ai_keywords", []),
-                "ai_summary": (paper.get("ai_summary") or "").strip(),
             })
 
     print(f"取得: {len(all_papers)} 件（重複排除後）")
@@ -312,7 +309,6 @@ def main():
         )
         arxiv_url = f'https://arxiv.org/abs/{escape(p["id"])}'
         hf_date = p.get("hf_date", "")
-        summary_ja = escape(p.get("summary_ja", ""))
         title_esc = escape(p["title"])
         author_esc = escape(p["first_author"])
         github_repo_url = p["github_repo"] or ""
@@ -326,14 +322,12 @@ def main():
             f'<p>{new_span}<strong><a href="{arxiv_url}" target="_blank" rel="noopener">{title_esc}</a></strong></p>',
             f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date[5:]} · {author_esc}{github_link_html}</p>',
         ]
-        if summary_ja:
-            detail_lines.append(f'<p class="summary-ja">{summary_ja}</p>')
         # 改行が入るとkramdownがHTMLブロックを途中で切るので1行にする
         abstract_ja = escape(" ".join(p.get("abstract_ja", "").split()))
         if abstract_ja:
             detail_lines += [
                 '<details>',
-                '<summary>アブストラクトを読む</summary>',
+                '<summary>要約を読む</summary>',
                 f'<blockquote class="abstract-ja">{abstract_ja}</blockquote>',
                 '</details>',
             ]

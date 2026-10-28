@@ -689,50 +689,6 @@ def collect_slides() -> list[dict]:
     return articles
 
 
-def collect_github_trending() -> list[dict]:
-    """GitHub Trending 日本語まとめ: RSS Feed からトレンドリポジトリを収集
-    データソース: https://github.com/yashikota/github-trending-ja
-    Copyright (c) 2025 kota - MIT License
-    """
-    url = "https://yashikota.github.io/github-trending-ja/feed.xml"
-    r = get(url)
-    if not r:
-        return []
-    articles = []
-    for item in parse_rss(r.content):
-        raw_title = item.get("title", "")
-        desc = item.get("desc", "")
-        # タイトルを「リポ名 - 説明」に分割
-        parts = raw_title.split(" - ", 1)
-        repo_name = parts[0].strip()
-        repo_desc = parts[1].strip() if len(parts) > 1 else ""
-        # descriptionからスター数を抽出（例: "スター数: 8,803 (+686)"）
-        stars = 0
-        m = re.search(r'スター数[:：]\s*([\d,]+)', desc)
-        if not m:
-            m = re.search(r'⭐\s*([\d,]+)', desc)
-        if m:
-            stars = int(m.group(1).replace(",", ""))
-        # descriptionから言語を抽出（例: "言語: Python<br>"）
-        lang = ""
-        m_lang = re.search(r'言語[:：]\s*([^<\s]+)', desc)
-        if m_lang:
-            lang = m_lang.group(1)
-        articles.append({
-            "title": repo_name,
-            "url": item["url"],
-            "date": item.get("date", ""),
-            "desc": repo_desc,
-            "tags": classify_tags(raw_title, desc),
-            "meta": {
-                "stars": stars,
-                "lang": lang,
-            },
-        })
-    articles.sort(key=lambda a: a["meta"].get("stars", 0), reverse=True)
-    return articles
-
-
 # --- Markdown ---
 CSS = """<style>
 .tag { font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
@@ -784,7 +740,6 @@ TAB_NAV = """<div class="tab-nav">
   <button class="tab-btn" onclick="switchTab('blog',this)">Blog</button>
   <button class="tab-btn" onclick="switchTab('hn',this)">HN</button>
   <button class="tab-btn" onclick="switchTab('slides',this)">Slides</button>
-  <button class="tab-btn" onclick="switchTab('ghtrend',this)">Github</button>
 </div>
 <div class="sort-bar">
   <button id="sort-latest" class="sort-btn active" onclick="setSort('latest',this)">Latest</button>
@@ -821,17 +776,11 @@ function switchTab(id, btn) {
   const btnL = document.getElementById('sort-latest');
   const btnH = document.getElementById('sort-hotness');
   const crS = document.getElementById('credit-slides');
-  const crG = document.getElementById('credit-ghtrend');
   crS.style.display = id === 'slides' ? '' : 'none';
-  crG.style.display = id === 'ghtrend' ? '' : 'none';
   if (id === 'slides') {
     sortBar.style.display = '';
     btnL.style.display = ''; btnH.style.display = 'none';
     setSort('latest', btnL);
-  } else if (id === 'ghtrend') {
-    sortBar.style.display = '';
-    btnL.style.display = 'none'; btnH.style.display = '';
-    setSort('hotness', btnH);
   } else {
     sortBar.style.display = '';
     btnL.style.display = ''; btnH.style.display = '';
@@ -918,33 +867,6 @@ def render_hn(articles: list[dict]) -> list[str]:
     return lines
 
 
-def render_ghtrend(articles: list[dict]) -> list[str]:
-    """GitHub Trending専用レンダラー: リポ名リンク + 説明文 + スター数 + 言語"""
-    lines = ['<div id="tab-ghtrend" class="tab-pane">']
-    for a in articles:
-        repo   = esc(a["title"])
-        url    = safe_href(a["url"])
-        desc   = esc(a.get("desc", ""))
-        date   = a.get("date", "")[5:10]
-        stars  = a["meta"].get("stars", 0)
-        lang   = esc(a["meta"].get("lang", ""))
-        ts     = tag_spans(a.get("tags", ["dev"]))
-        stars_str = f"⭐ {stars:,}" if stars else ""
-        meta_parts = [p for p in [date, stars_str, lang] if p] + [ts]
-        lines += [
-            f'<div class="item" data-date="{a.get("date","")}" data-count="{stars}">',
-            f'  <div class="item-title"><a href="{url}" target="_blank" rel="noopener">{repo}</a></div>',
-        ]
-        if desc:
-            lines.append(f'  <div class="item-meta" style="color:#333;font-size:0.88rem;">{desc}</div>')
-        lines += [
-            f'  <div class="item-meta">{" &nbsp; ".join(meta_parts)}</div>',
-            "</div>",
-        ]
-    lines.append("</div>")
-    return lines
-
-
 def main():
     now = datetime.now(JST)
     date_label = now.strftime("%Y-%m-%d")
@@ -953,14 +875,13 @@ def main():
 
     print("収集開始...")
 
-    with ThreadPoolExecutor(max_workers=7) as ex:
+    with ThreadPoolExecutor(max_workers=6) as ex:
         f_zenn     = ex.submit(collect_zenn)
         f_qiita    = ex.submit(collect_qiita)
         f_hatena   = ex.submit(collect_hatena)
         f_blog     = ex.submit(collect_hatena_blog)
         f_hn       = ex.submit(collect_hn)
         f_slides   = ex.submit(collect_slides)
-        f_ghtrend  = ex.submit(collect_github_trending)
 
     zenn_articles    = f_zenn.result()
     qiita_articles   = f_qiita.result()
@@ -968,12 +889,10 @@ def main():
     blog_articles    = f_blog.result()
     hn_articles      = f_hn.result()
     slides_articles  = f_slides.result()
-    ghtrend_articles = f_ghtrend.result()
 
     print(f"  Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, "
-          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}, "
-          f"GH Trending: {len(ghtrend_articles)}")
+          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}")
 
     # --- 日付フィルタ（Zennはトレンドなのでフィルタなし、他は14日）---
     cutoff = (now - timedelta(days=14)).strftime("%Y-%m-%d")
@@ -985,10 +904,9 @@ def main():
     hatena_articles = recent(hatena_articles)
     slides_articles = recent(slides_articles)
     # blogは1ヶ月の検索RSSなのでフィルタ不要
-    # GH Trendingは当日のトレンドなのでフィルタ不要
     print(f"  日付フィルタ後 → Zenn: {len(zenn_articles)}(フィルタなし), Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, "
-          f"Slides: {len(slides_articles)}, GH Trending: {len(ghtrend_articles)}")
+          f"Slides: {len(slides_articles)}")
 
     # --- タブ間の重複排除（先のタブを優先、UTMパラメータ除去して比較）---
     global_seen: set[str] = set()
@@ -1006,11 +924,9 @@ def main():
     blog_articles   = dedup(blog_articles)
     hn_articles     = dedup(hn_articles)
     slides_articles  = dedup(slides_articles)
-    ghtrend_articles = dedup(ghtrend_articles)
     print(f"  重複排除後 → Zenn: {len(zenn_articles)}, Qiita: {len(qiita_articles)}, "
           f"はてな: {len(hatena_articles)}, Blog: {len(blog_articles)}, "
-          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}, "
-          f"GH Trending: {len(ghtrend_articles)}")
+          f"HN: {len(hn_articles)}, Slides: {len(slides_articles)}")
 
     lines: list[str] = [
         "---",
@@ -1037,17 +953,11 @@ def main():
     lines += render_hn(hn_articles)
     lines += [""]
     lines += render_standard(slides_articles, "slides", "", "")
-    lines += [""]
-    lines += render_ghtrend(ghtrend_articles)
     lines += [
         "",
         '<div id="credit-slides" class="item-meta" style="margin-top:12px;display:none;">',
         '引用: <a href="https://yuji.software/tech_slideshare/" target="_blank" rel="noopener">勉強会スライドbot</a>'
         ' by <a href="https://github.com/YujiSoftware" target="_blank" rel="noopener">YujiSoftware</a>',
-        '</div>',
-        '<div id="credit-ghtrend" class="item-meta" style="margin-top:12px;display:none;">',
-        '引用: <a href="https://github-trending-ja.yashikota.com/" target="_blank" rel="noopener">GitHub Trending 日本語まとめ</a>'
-        ' by <a href="https://github.com/yashikota/github-trending-ja" target="_blank" rel="noopener">kota</a> (MIT License)',
         '</div>',
         "",
         f'<div class="kindle-footer"><a class="kindle-btn" href="{KINDLE_DAILY_URL}" target="_blank" rel="noopener">Kindle 日替わりセール</a></div>',
