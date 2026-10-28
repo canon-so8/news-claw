@@ -108,7 +108,7 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "datadog", "new relic", "sre", "障害", "incident", "インシデント", "運用", "オンコール",
         "ログ設計", "ログ収集", "ログ基盤", "ロギング", "nginx", "linux", "サーバー", "ネットワーク", "network", "dns",
         "cdn", "vps", "自宅サーバー", "homelab", "マイクロサービス", "microservice",
-        "re:invent", "jaws-ug", "s3", "ジョブ基盤", "定期実行", "valkey", "tailscale", "ci", "本番db", "nw",
+        "re:invent", "jaws-ug", "24/365", "24時間365日", "s3", "ジョブ基盤", "定期実行", "valkey", "tailscale", "ci", "本番db", "nw",
     ]),
     ("web", "Web・アプリ", [
         "react", "vue", "svelte", "next.js", "nuxt", "angular", "astro", "remix",
@@ -142,7 +142,7 @@ GENRES: list[tuple[str, str, list[str]]] = [
         "マネジメント", "マネージャー", "manager", "組織", "チーム", "リーダー", "採用",
         "hiring", "評価制度", "1on1", "育成", "学習法", "勉強法", "勉強会", "資格", "試験",
         "マインドセット", "生き方", "ポエム", "振り返り", "属人化", "仕事術", "生産性",
-        "コミュニケーション", "burnout", "燃え尽き",
+        "コミュニケーションコスト", "burnout", "燃え尽き",
         "lt会", "登壇", "参加記", "参加レポート", "レポ", "インターン", "入社", "報連相", "読書", "アジャイル", "agile", "スクラム", "バックログ", "エンジニア歴", "シニア", "中堅", "ライティング", "advice", "pm", "退職", "労基", "技能",
     ]),
     ("biz", "業界・製品", [
