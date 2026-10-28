@@ -10,7 +10,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-from html import escape
+from html import escape, unescape
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -46,27 +46,30 @@ CSS = """<style>
 .tag-llm   { color: #00695c; background: #e0f2f1; }
 .tag-quant { color: #1a4f7a; background: #e3f0fb; }
 .tag-hf    { color: #ff6b35; background: #fff0eb; }
+.tag-new   { color: #fff; background: #d32f2f; }
 .tag-other { color: #666; background: #f2f2f2; }
 .tab-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1.2rem; }
 .tab-btn { padding: 5px 13px; border: none; border-radius: 20px; cursor: pointer; font-size: 0.82rem; font-weight: 700; background: #e8e8e8; color: #444; }
 .tab-btn.active { background: #333; color: #fff; }
 .paper { margin-bottom: 0; border-top: 1px solid rgba(128,128,128,0.35); padding-top: 1.2rem; margin-top: 0.8rem; }
 .paper:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
-details { margin-top: 6px; }
-details summary { cursor: pointer; font-size: 0.82rem; color: #888; margin-top: 4px; }
-details blockquote { font-size: 0.85rem; line-height: 1.6; margin: 8px 0 0 0; padding: 8px 12px; color: #555; border-left: 3px solid #ddd; background: transparent; }
+.summary-ja { font-size: 0.85rem; line-height: 1.6; color: #999; margin-top: -4px; }
 </style>"""
 
-TAB_NAV = """<div class="tab-nav">
-  <button class="tab-btn active" onclick="filterTag('all',this)">ALL</button>
-  <button class="tab-btn" onclick="filterTag('agent',this)">Agent</button>
-  <button class="tab-btn" onclick="filterTag('ml',this)">ML</button>
-  <button class="tab-btn" onclick="filterTag('cv',this)">CV</button>
-  <button class="tab-btn" onclick="filterTag('nlp',this)">NLP</button>
-  <button class="tab-btn" onclick="filterTag('llm',this)">LLM</button>
-  <button class="tab-btn" onclick="filterTag('audio',this)">Audio</button>
-  <button class="tab-btn" onclick="filterTag('quant',this)">Quant</button>
-</div>"""
+TAB_LABELS = [
+    ("new", "NEW"), ("agent", "Agent"), ("ml", "ML"), ("cv", "CV"),
+    ("nlp", "NLP"), ("llm", "LLM"), ("audio", "Audio"), ("quant", "Quant"),
+]
+
+JA_CHAR = re.compile(r"[぀-ヿ一-鿿]")
+
+
+def build_tab_nav(papers: list[dict]) -> str:
+    buttons = [f'  <button class="tab-btn active" onclick="filterTag(\'all\',this)">ALL({len(papers)})</button>']
+    for tag, label in TAB_LABELS:
+        n = sum(tag in p["tags"] for p in papers)
+        buttons.append(f'  <button class="tab-btn" onclick="filterTag(\'{tag}\',this)">{label}({n})</button>')
+    return '<div class="tab-nav">\n' + "\n".join(buttons) + "\n</div>"
 
 FILTER_JS = """<script>
 function filterTag(tag, btn) {
@@ -118,6 +121,50 @@ def fetch_papers(date_str: str) -> list[dict]:
     return []
 
 
+def load_previous(today: str) -> tuple[set[str], dict[str, str]]:
+    """前日以前の最新記事の論文ID（NEW判定用）と、直近記事の日本語要約キャッシュを返す"""
+    files = sorted(OUTPUT_DIR.glob("*-neta-trend-hf.md"))
+    prev_ids: set[str] = set()
+    for f in reversed(files):
+        if f.name[:10] < today:
+            prev_ids = set(re.findall(r'arxiv\.org/abs/([0-9.]+)"', f.read_text(encoding="utf-8")))
+            break
+
+    # 同日の再実行でも翻訳し直さないよう、日付を問わず直近数件から拾う
+    cache: dict[str, str] = {}
+    for f in files[-5:]:
+        for block in f.read_text(encoding="utf-8").split('<div class="paper"')[1:]:
+            m_id = re.search(r'arxiv\.org/abs/([0-9.]+)"', block)
+            m_sum = re.search(r'<p class="summary-ja">(.*?)</p>', block)
+            if m_id and m_sum and JA_CHAR.search(m_sum.group(1)):
+                cache[m_id.group(1)] = unescape(m_sum.group(1))
+    return prev_ids, cache
+
+
+def translate_summaries(papers: list[dict], cache: dict[str, str]) -> None:
+    """ai_summary を Google翻訳で日本語化。失敗時は英語のまま残す"""
+    from deep_translator import GoogleTranslator
+    translator = GoogleTranslator(source="en", target="ja")
+    translated = 0
+    blocked = False
+    for p in papers:
+        if p["id"] in cache:
+            p["summary_ja"] = cache[p["id"]]
+            continue
+        p["summary_ja"] = p["ai_summary"]
+        if not p["ai_summary"] or blocked:
+            continue
+        try:
+            p["summary_ja"] = translator.translate(p["ai_summary"]) or p["ai_summary"]
+            translated += 1
+            time.sleep(1)
+        except Exception as e:
+            # ブロックされた可能性が高いので以降は英語のまま
+            print(f"  翻訳失敗、以降は英語のまま ({e})", file=sys.stderr)
+            blocked = True
+    print(f"要約翻訳: {translated} 件（キャッシュ {sum(p['id'] in cache for p in papers)} 件）")
+
+
 def main():
     now = datetime.now(JST)
     dates = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
@@ -150,6 +197,7 @@ def main():
                 "hf_date": d,
                 "first_author": ((paper.get("authors") or [{}])[0]).get("name", ""),
                 "ai_keywords": paper.get("ai_keywords", []),
+                "ai_summary": (paper.get("ai_summary") or "").strip(),
             })
 
     print(f"取得: {len(all_papers)} 件（重複排除後）")
@@ -163,17 +211,22 @@ def main():
 
     print(f"フィルタ後: {len(filtered)} 件")
 
-    # タグ付け
-    for p in filtered:
-        p["tags"] = assign_tags(p)
-
-    for p in filtered:
-        p["summary_ja"] = ""
-
-    # Markdown生成
     timestamp = now.strftime("%Y-%m-%d-%H-%M")
     date_label = now.strftime("%Y-%m-%d")
     time_label = now.strftime("%H:%M")
+
+    prev_ids, summary_cache = load_previous(date_label)
+
+    # タグ付け（前日の記事にいなかった論文は new）
+    for p in filtered:
+        p["tags"] = assign_tags(p)
+        p["is_new"] = p["id"] not in prev_ids
+        if p["is_new"]:
+            p["tags"].append("new")
+
+    translate_summaries(filtered, summary_cache)
+
+    # Markdown生成
 
     lines: list[str] = [
         "---",
@@ -185,7 +238,7 @@ def main():
         "",
         CSS,
         "",
-        TAB_NAV,
+        build_tab_nav(filtered),
         "",
     ]
 
@@ -193,8 +246,9 @@ def main():
         tags = p["tags"]
         data_tags = " ".join(tags)
         tag_spans = " ".join(
-            f'<span class="tag tag-{t}">{t.upper()}</span>' for t in tags
+            f'<span class="tag tag-{t}">{t.upper()}</span>' for t in tags if t != "new"
         )
+        new_span = '<span class="tag tag-new">NEW</span> ' if p["is_new"] else ""
         upvote_span = f'<span class="tag tag-hf">▲ {p["upvotes"]} upvotes</span>'
         star_span = (
             f' <span class="tag tag-hf">★ {p["github_stars"]} stars</span>'
@@ -213,16 +267,11 @@ def main():
 
         detail_lines = [
             f'<div class="paper" data-tags="{data_tags}">',
-            f'<p><strong><a href="{arxiv_url}" target="_blank" rel="noopener">{title_esc}</a></strong></p>',
+            f'<p>{new_span}<strong><a href="{arxiv_url}" target="_blank" rel="noopener">{title_esc}</a></strong></p>',
             f'<p>{tag_spans} {upvote_span}{star_span} · {hf_date[5:]} · {author_esc}{github_link_html}</p>',
         ]
         if summary_ja:
-            detail_lines += [
-                '<details>',
-                '<summary>要約を読む</summary>',
-                f'<blockquote>{summary_ja}</blockquote>',
-                '</details>',
-            ]
+            detail_lines.append(f'<p class="summary-ja">{summary_ja}</p>')
         detail_lines += ["</div>", ""]
         lines += detail_lines
 
